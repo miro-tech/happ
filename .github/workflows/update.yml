@@ -1,0 +1,52 @@
+name: Update V2Ray configs
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Every 6 hours.
+    # GitHub cron uses UTC.
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Parse latest happvpn post
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Parse latest Telegram post
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+
+          # Telegram public channel.
+          # The parser automatically finds the newest post.
+          TELEGRAM_CHANNEL: happvpn
+
+          # File inside the Gist.
+          GIST_FILENAME: configs.txt
+
+          # HTTP timeout.
+          REQUEST_TIMEOUT: "30"
+
+          # Maximum size of one subscription.
+          MAX_SOURCE_SIZE: "10485760"
+
+        run: |
+          python parser.py
