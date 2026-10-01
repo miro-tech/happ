@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 import html
 import json
 import os
@@ -14,7 +13,6 @@ from html.parser import HTMLParser
 from urllib.parse import (
     parse_qs,
     unquote,
-    urljoin,
     urlsplit,
 )
 
@@ -40,9 +38,10 @@ GIST_ID = os.getenv(
     "",
 ).strip()
 
+# Main output.
 GIST_FILENAME = os.getenv(
     "GIST_FILENAME",
-    "configs.txt",
+    "configs.json",
 ).strip()
 
 REQUEST_TIMEOUT = int(
@@ -59,8 +58,6 @@ MAX_SOURCE_SIZE = int(
     )
 )
 
-# How many characters of an unrecognized response
-# should be printed to Actions log.
 DEBUG_PREVIEW = int(
     os.getenv(
         "DEBUG_PREVIEW",
@@ -78,18 +75,15 @@ USER_AGENT = (
 
 SESSION = requests.Session()
 
-SESSION.headers.update(
-    {
-        "User-Agent": USER_AGENT,
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Connection": "keep-alive",
-    }
-)
+SESSION.headers.update({
+    "User-Agent": USER_AGENT,
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 
 # ============================================================
-# SUPPORTED PROTOCOLS
+# PROTOCOLS
 # ============================================================
 
 PROTOCOLS = (
@@ -111,23 +105,21 @@ PROTOCOLS = (
 # ============================================================
 
 class TelegramHTMLParser(HTMLParser):
-    """
-    Extracts links and visible text from Telegram HTML.
-    """
 
     def __init__(self):
         super().__init__(
             convert_charrefs=True
         )
 
-        self.links: list[str] = []
-        self.text_parts: list[str] = []
+        self.links = []
+        self.text_parts = []
 
     def handle_starttag(
         self,
         tag,
         attrs,
     ):
+
         if tag.lower() != "a":
             return
 
@@ -137,6 +129,7 @@ class TelegramHTMLParser(HTMLParser):
                 key.lower() == "href"
                 and value
             ):
+
                 self.links.append(
                     html.unescape(
                         value.strip()
@@ -147,6 +140,7 @@ class TelegramHTMLParser(HTMLParser):
         self,
         data,
     ):
+
         if data:
             self.text_parts.append(
                 data
@@ -154,7 +148,7 @@ class TelegramHTMLParser(HTMLParser):
 
 
 # ============================================================
-# BASIC HELPERS
+# HELPERS
 # ============================================================
 
 def normalize_url(
@@ -220,33 +214,28 @@ def unique_preserve_order(
 
 
 def clean_config(
-    config: str,
+    value: str,
 ) -> str:
 
-    config = html.unescape(
-        config
+    value = html.unescape(
+        value
     )
 
-    config = config.replace(
+    value = value.replace(
         "\\/",
         "/",
     )
 
-    config = config.strip()
-
-    # Remove common surrounding characters.
-    config = config.strip(
-        "\"'`<>()[]{} ,;\r\n\t"
+    return value.strip(
+        " \t\r\n\"'`<>()[]{} ,;"
     )
 
-    return config
-
 
 # ============================================================
-# TELEGRAM CHANNEL
+# TELEGRAM
 # ============================================================
 
-def get_channel_page() -> str:
+def get_channel_page():
 
     url = (
         f"https://t.me/s/"
@@ -274,16 +263,10 @@ def get_channel_page() -> str:
     return response.text
 
 
-# ============================================================
-# FIND LAST POST
-# ============================================================
-
 def get_last_post_url(
     channel_html: str,
-) -> str:
+):
 
-    # Match:
-    # https://t.me/happvpn/4237
     pattern = re.compile(
         rf"https?://t\.me/"
         rf"{re.escape(TELEGRAM_CHANNEL)}"
@@ -298,7 +281,6 @@ def get_last_post_url(
         )
     ]
 
-    # Fallback to relative links.
     if not ids:
 
         pattern = re.compile(
@@ -343,90 +325,58 @@ def get_last_post_url(
     return post_url
 
 
-# ============================================================
-# FETCH POST
-# ============================================================
-
 def fetch_post(
     post_url: str,
-) -> str:
+):
 
-    candidates = [
-        post_url + "?embed=1",
-        post_url + "?embed=1&mode=tme",
-    ]
-
-    errors = []
-
-    for url in candidates:
-
-        try:
-
-            print(
-                f"[TELEGRAM] GET {url}"
-            )
-
-            response = SESSION.get(
-                url,
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            print(
-                f"[TELEGRAM] HTTP "
-                f"{response.status_code} "
-                f"{len(response.content)} bytes"
-            )
-
-            if (
-                response.ok
-                and response.text
-            ):
-
-                return response.text
-
-            errors.append(
-                f"{url}: HTTP "
-                f"{response.status_code}"
-            )
-
-        except Exception as exc:
-
-            errors.append(
-                f"{url}: "
-                f"{type(exc).__name__}: "
-                f"{exc}"
-            )
-
-    raise RuntimeError(
-        "Could not fetch Telegram post:\n"
-        + "\n".join(errors)
+    url = (
+        post_url
+        + "?embed=1"
     )
 
+    print(
+        f"[TELEGRAM] GET {url}"
+    )
+
+    response = SESSION.get(
+        url,
+        timeout=REQUEST_TIMEOUT,
+    )
+
+    print(
+        f"[TELEGRAM] HTTP "
+        f"{response.status_code} "
+        f"{len(response.content)} bytes"
+    )
+
+    response.raise_for_status()
+
+    return response.text
+
 
 # ============================================================
-# TELEGRAM URL FILTER
+# URL FILTER
 # ============================================================
 
-def is_ignored_telegram_url(
+def is_ignored_url(
     url: str,
 ) -> bool:
 
     low = url.lower()
 
-    # Telegram's own infrastructure.
-    ignored_hosts = (
-        "t.me",
-        "telegram.me",
-        "telegram.org",
-        "oauth.tg.dev",
-        "telegram-widget.com",
-    )
-
     try:
 
+        parsed = urlsplit(
+            url
+        )
+
         host = (
-            urlsplit(url)
-            .hostname
+            parsed.hostname
+            or ""
+        ).lower()
+
+        path = (
+            parsed.path
             or ""
         ).lower()
 
@@ -434,14 +384,19 @@ def is_ignored_telegram_url(
 
         return True
 
+    ignored_hosts = (
+        "t.me",
+        "telegram.me",
+        "telegram.org",
+        "oauth.tg.dev",
+    )
+
     if host in ignored_hosts:
         return True
 
-    # Telegram widget / JS.
     ignored_fragments = (
         "telegram-widget.js",
         "/js/telegram-widget",
-        "tgwidget",
     )
 
     if any(
@@ -450,8 +405,7 @@ def is_ignored_telegram_url(
     ):
         return True
 
-    # Media files.
-    media_extensions = (
+    media = (
         ".jpg",
         ".jpeg",
         ".png",
@@ -466,40 +420,21 @@ def is_ignored_telegram_url(
         ".mp3",
         ".ogg",
         ".wav",
+        ".js",
+        ".css",
+        ".woff",
+        ".woff2",
     )
 
-    path = (
-        urlsplit(url)
-        .path
-        .lower()
-    )
-
-    if path.endswith(
-        media_extensions
-    ):
-        return True
-
-    # Static scripts/styles.
-    if path.endswith(
-        (
-            ".js",
-            ".css",
-            ".woff",
-            ".woff2",
-        )
-    ):
+    if path.endswith(media):
         return True
 
     return False
 
 
-# ============================================================
-# EXTRACT URLS FROM POST
-# ============================================================
-
 def extract_post_urls(
     post_html: str,
-) -> list[str]:
+):
 
     parser = TelegramHTMLParser()
 
@@ -509,10 +444,7 @@ def extract_post_urls(
 
     urls = []
 
-    # --------------------------------------------------------
-    # href URLs
-    # --------------------------------------------------------
-
+    # href
     for url in parser.links:
 
         url = normalize_url(
@@ -521,16 +453,12 @@ def extract_post_urls(
 
         if (
             is_http_url(url)
-            and not is_ignored_telegram_url(
-                url
-            )
+            and not is_ignored_url(url)
         ):
+
             urls.append(url)
 
-    # --------------------------------------------------------
-    # Plain URLs in visible HTML/text.
-    # --------------------------------------------------------
-
+    # visible text
     text = "\n".join(
         parser.text_parts
     )
@@ -539,13 +467,11 @@ def extract_post_urls(
         text
     )
 
-    plain_urls = re.findall(
+    for url in re.findall(
         r"https?://[^\s\"'<>]+",
         text,
-        flags=re.I,
-    )
-
-    for url in plain_urls:
+        re.I,
+    ):
 
         url = normalize_url(
             url
@@ -553,37 +479,10 @@ def extract_post_urls(
 
         if (
             is_http_url(url)
-            and not is_ignored_telegram_url(
-                url
-            )
+            and not is_ignored_url(url)
         ):
+
             urls.append(url)
-
-    # --------------------------------------------------------
-    # Fallback: search entire HTML.
-    # --------------------------------------------------------
-
-    if not urls:
-
-        raw_urls = re.findall(
-            r"https?://[^\s\"'<>]+",
-            post_html,
-            flags=re.I,
-        )
-
-        for url in raw_urls:
-
-            url = normalize_url(
-                url
-            )
-
-            if (
-                is_http_url(url)
-                and not is_ignored_telegram_url(
-                    url
-                )
-            ):
-                urls.append(url)
 
     return unique_preserve_order(
         urls
@@ -591,14 +490,16 @@ def extract_post_urls(
 
 
 # ============================================================
-# EXEC?URL= WRAPPER
+# WRAPPER URL
 # ============================================================
 
 def extract_wrapped_urls(
     url: str,
-) -> list[str]:
+):
 
-    result = [url]
+    result = [
+        url
+    ]
 
     try:
 
@@ -611,7 +512,6 @@ def extract_wrapped_urls(
             keep_blank_values=True,
         )
 
-        # Common names.
         keys = (
             "url",
             "target",
@@ -624,12 +524,10 @@ def extract_wrapped_urls(
 
         for key in keys:
 
-            values = query.get(
+            for value in query.get(
                 key,
                 [],
-            )
-
-            for value in values:
+            ):
 
                 value = unquote(
                     value
@@ -650,8 +548,8 @@ def extract_wrapped_urls(
     except Exception as exc:
 
         print(
-            f"[WRAPPER] Failed to parse "
-            f"{url}: {exc}"
+            f"[WRAPPER] "
+            f"{exc}"
         )
 
     return unique_preserve_order(
@@ -660,40 +558,199 @@ def extract_wrapped_urls(
 
 
 # ============================================================
-# BASE64 DECODER
+# JSON CONFIG DETECTION
 # ============================================================
 
-def base64_decode_variants(
+def looks_like_xray_config(
+    obj,
+) -> bool:
+
+    if not isinstance(
+        obj,
+        dict,
+    ):
+        return False
+
+    # Typical Xray/V2Ray configuration.
+    keys = set(
+        obj.keys()
+    )
+
+    if (
+        "inbounds" in keys
+        and "outbounds" in keys
+    ):
+        return True
+
+    # Some exported configs can have only
+    # outbounds.
+    if "outbounds" in keys:
+        return True
+
+    # sing-box style.
+    if (
+        "inbounds" in keys
+        and "outbounds" in keys
+    ):
+        return True
+
+    return False
+
+
+def extract_json_configs(
+    obj,
+):
+
+    configs = []
+
+    if isinstance(
+        obj,
+        dict,
+    ):
+
+        if looks_like_xray_config(
+            obj
+        ):
+
+            configs.append(
+                obj
+            )
+
+        # Search nested objects.
+        for value in obj.values():
+
+            configs.extend(
+                extract_json_configs(
+                    value
+                )
+            )
+
+    elif isinstance(
+        obj,
+        list,
+    ):
+
+        for item in obj:
+
+            configs.extend(
+                extract_json_configs(
+                    item
+                )
+            )
+
+    return configs
+
+
+def parse_json_configs(
+    text: str,
+):
+
+    stripped = text.strip()
+
+    if not (
+        stripped.startswith("[")
+        or stripped.startswith("{")
+    ):
+        return []
+
+    try:
+
+        obj = json.loads(
+            stripped
+        )
+
+    except Exception:
+
+        return []
+
+    configs = (
+        extract_json_configs(
+            obj
+        )
+    )
+
+    return configs
+
+
+# ============================================================
+# JSON -> TEXT PROTOCOL SEARCH
+# ============================================================
+
+def extract_strings_from_json(
+    value,
+):
+
+    result = []
+
+    if isinstance(
+        value,
+        str,
+    ):
+
+        result.append(
+            value
+        )
+
+    elif isinstance(
+        value,
+        dict,
+    ):
+
+        for key, val in value.items():
+
+            result.append(
+                str(key)
+            )
+
+            result.extend(
+                extract_strings_from_json(
+                    val
+                )
+            )
+
+    elif isinstance(
+        value,
+        list,
+    ):
+
+        for item in value:
+
+            result.extend(
+                extract_strings_from_json(
+                    item
+                )
+            )
+
+    return result
+
+
+# ============================================================
+# BASE64
+# ============================================================
+
+def decode_base64_variants(
     value: str,
-) -> list[str]:
+):
 
     results = []
 
     if not value:
         return results
 
-    value = value.strip()
-
-    # Remove data URI.
-    if value.lower().startswith(
-        "data:text/plain;base64,"
-    ):
-
-        value = value.split(
-            ",",
-            1,
-        )[1]
-
-    # Remove whitespace.
     compact = re.sub(
         r"\s+",
         "",
-        value,
+        value.strip(),
     )
 
-    # --------------------------------------------------------
-    # Standard Base64
-    # --------------------------------------------------------
+    if compact.lower().startswith(
+        "data:text/plain;base64,"
+    ):
+
+        compact = compact.split(
+            ",",
+            1
+        )[1]
 
     candidates = [
         compact,
@@ -723,22 +780,20 @@ def base64_decode_variants(
             if not raw:
                 continue
 
-            text = raw.decode(
+            decoded = raw.decode(
                 "utf-8",
                 errors="ignore",
             )
 
-            if text.strip():
+            if decoded.strip():
 
                 results.append(
-                    text
+                    decoded
                 )
 
-        except (
-            ValueError,
-            binascii.Error,
-        ):
-            continue
+        except Exception:
+
+            pass
 
     return unique_preserve_order(
         results
@@ -747,7 +802,7 @@ def base64_decode_variants(
 
 def looks_like_base64(
     value: str,
-) -> bool:
+):
 
     value = value.strip()
 
@@ -766,23 +821,16 @@ def looks_like_base64(
     ):
         return False
 
-    # Try decoding.
-    decoded = base64_decode_variants(
-        compact
-    )
-
-    for text in decoded:
-
-        low = text.lower()
+    for decoded in (
+        decode_base64_variants(
+            compact
+        )
+    ):
 
         if (
-            "://" in text
-            or "vless" in low
-            or "vmess" in low
-            or "trojan" in low
-            or "hysteria" in low
-            or "tuic" in low
-            or "ss://" in low
+            extract_protocol_links(
+                decoded
+            )
         ):
 
             return True
@@ -791,12 +839,12 @@ def looks_like_base64(
 
 
 # ============================================================
-# PROTOCOL EXTRACTION
+# PROTOCOL LINKS
 # ============================================================
 
 def extract_protocol_links(
     text: str,
-) -> list[str]:
+):
 
     if not text:
         return []
@@ -808,12 +856,6 @@ def extract_protocol_links(
     text = text.replace(
         "\\/",
         "/",
-    )
-
-    # JSON may contain escaped quotes.
-    text = text.replace(
-        "\\u0026",
-        "&",
     )
 
     protocols = "|".join(
@@ -839,8 +881,6 @@ def extract_protocol_links(
             item
         )
 
-        # Remove trailing punctuation
-        # which belongs to surrounding text.
         item = item.rstrip(
             ".,;!?"
         )
@@ -857,118 +897,45 @@ def extract_protocol_links(
 
 
 # ============================================================
-# JSON RECURSION
+# GENERIC CONTENT PARSER
 # ============================================================
 
-def walk_json(
-    value,
-) -> list[str]:
-
-    results = []
-
-    if isinstance(
-        value,
-        str,
-    ):
-
-        results.append(
-            value
-        )
-
-    elif isinstance(
-        value,
-        dict,
-    ):
-
-        for key, val in value.items():
-
-            # Keys can contain useful data.
-            results.append(
-                str(key)
-            )
-
-            results.extend(
-                walk_json(val)
-            )
-
-    elif isinstance(
-        value,
-        list,
-    ):
-
-        for item in value:
-
-            results.extend(
-                walk_json(item)
-            )
-
-    return results
-
-
-# ============================================================
-# CONTENT EXPANSION
-# ============================================================
-
-def expand_content(
+def parse_content(
     text: str,
-    depth: int = 0,
-) -> list[str]:
+):
 
-    if not text:
-        return []
-
-    if depth > 4:
-        return [text]
-
-    results = [
-        text
-    ]
+    uri_configs = []
+    json_configs = []
 
     # --------------------------------------------------------
-    # Direct protocol URLs.
+    # 1. Direct URI links.
     # --------------------------------------------------------
 
-    results.extend(
+    uri_configs.extend(
         extract_protocol_links(
             text
         )
     )
 
     # --------------------------------------------------------
-    # Base64.
+    # 2. JSON Xray/V2Ray configs.
     # --------------------------------------------------------
 
-    if looks_like_base64(
-        text
-    ):
-
-        for decoded in (
-            base64_decode_variants(
-                text
-            )
-        ):
-
-            if (
-                decoded.strip()
-                != text.strip()
-            ):
-
-                results.extend(
-                    expand_content(
-                        decoded,
-                        depth + 1,
-                    )
-                )
+    json_configs.extend(
+        parse_json_configs(
+            text
+        )
+    )
 
     # --------------------------------------------------------
-    # JSON.
+    # 3. If JSON, inspect all strings.
     # --------------------------------------------------------
 
     stripped = text.strip()
 
     if (
-        stripped.startswith("{")
-        or stripped.startswith("[")
+        stripped.startswith("[")
+        or stripped.startswith("{")
     ):
 
         try:
@@ -977,63 +944,65 @@ def expand_content(
                 stripped
             )
 
-            values = walk_json(
-                obj
-            )
+            for value in (
+                extract_strings_from_json(
+                    obj
+                )
+            ):
 
-            for value in values:
-
-                results.extend(
-                    expand_content(
-                        value,
-                        depth + 1,
+                uri_configs.extend(
+                    extract_protocol_links(
+                        value
                     )
                 )
 
         except Exception:
+
             pass
 
     # --------------------------------------------------------
-    # Also try to find Base64-looking chunks inside
-    # larger responses.
+    # 4. Base64.
     # --------------------------------------------------------
 
-    # This is useful when a subscription response
-    # contains a JSON/YAML field with Base64 content.
-    tokens = re.findall(
-        r"[A-Za-z0-9_-]{40,}",
-        text,
-    )
+    if looks_like_base64(
+        text
+    ):
 
-    for token in tokens[:100]:
-
-        if looks_like_base64(
-            token
+        for decoded in (
+            decode_base64_variants(
+                text
+            )
         ):
 
-            for decoded in (
-                base64_decode_variants(
-                    token
+            sub_uri, sub_json = (
+                parse_content(
+                    decoded
                 )
-            ):
+            )
 
-                results.extend(
-                    expand_content(
-                        decoded,
-                        depth + 1,
-                    )
-                )
+            uri_configs.extend(
+                sub_uri
+            )
 
-    return results
+            json_configs.extend(
+                sub_json
+            )
+
+    return (
+        unique_preserve_order(
+            uri_configs
+        ),
+        json_configs,
+    )
 
 
 # ============================================================
-# DOWNLOAD SOURCE
+# DOWNLOAD
 # ============================================================
 
 def download_source(
     url: str,
-) -> str | None:
+):
 
     print()
     print(
@@ -1055,23 +1024,18 @@ def download_source(
             f"{response.url}"
         )
 
-        content_type = (
-            response.headers.get(
+        print(
+            "[SOURCE] Content-Type: "
+            + response.headers.get(
                 "content-type",
                 "",
             )
         )
 
-        print(
-            f"[SOURCE] Content-Type: "
-            f"{content_type}"
-        )
-
         if not response.ok:
 
             print(
-                "[SOURCE] skipped "
-                f"HTTP {response.status_code}"
+                "[SOURCE] skipped"
             )
 
             return None
@@ -1086,7 +1050,9 @@ def download_source(
             if not chunk:
                 continue
 
-            total += len(chunk)
+            total += len(
+                chunk
+            )
 
             if (
                 total
@@ -1094,8 +1060,7 @@ def download_source(
             ):
 
                 print(
-                    "[SOURCE] skipped: "
-                    "response too large"
+                    "[SOURCE] too large"
                 )
 
                 return None
@@ -1108,22 +1073,10 @@ def download_source(
             chunks
         )
 
-        # ----------------------------------------------------
-        # UTF-8 / UTF-8 with BOM.
-        # ----------------------------------------------------
-
         text = raw.decode(
             "utf-8-sig",
             errors="ignore",
         )
-
-        if not text.strip():
-
-            print(
-                "[SOURCE] empty response"
-            )
-
-            return None
 
         print(
             f"[SOURCE] received "
@@ -1144,23 +1097,23 @@ def download_source(
 
 
 # ============================================================
-# DEBUG PREVIEW
+# DEBUG
 # ============================================================
 
-def print_debug_preview(
+def debug_preview(
     text: str,
 ):
 
-    preview = text[:DEBUG_PREVIEW]
-
-    preview = preview.replace(
-        "\r",
-        "\\r",
-    )
-
-    preview = preview.replace(
-        "\n",
-        "\\n",
+    preview = (
+        text[:DEBUG_PREVIEW]
+        .replace(
+            "\r",
+            "\\r",
+        )
+        .replace(
+            "\n",
+            "\\n",
+        )
     )
 
     print(
@@ -1173,36 +1126,28 @@ def print_debug_preview(
 
 
 # ============================================================
-# PARSE ONE URL
+# PARSE SOURCE
 # ============================================================
 
 def parse_source(
     original_url: str,
-) -> list[str]:
+):
 
-    # --------------------------------------------------------
-    # Build URL candidates.
-    # --------------------------------------------------------
+    uri_configs = []
+    json_configs = []
 
-    candidates = []
-
-    candidates.extend(
+    candidates = (
         extract_wrapped_urls(
             original_url
         )
     )
 
-    # --------------------------------------------------------
-    # Download every candidate.
-    # --------------------------------------------------------
+    print(
+        f"[SOURCE] URL candidates: "
+        f"{len(candidates)}"
+    )
 
-    all_configs = []
-
-    for candidate in (
-        unique_preserve_order(
-            candidates
-        )
-    ):
+    for candidate in candidates:
 
         text = download_source(
             candidate
@@ -1211,169 +1156,50 @@ def parse_source(
         if not text:
             continue
 
-        # ----------------------------------------------------
-        # Expand/decode.
-        # ----------------------------------------------------
-
-        expanded = expand_content(
-            text
-        )
-
-        configs = []
-
-        for item in expanded:
-
-            configs.extend(
-                extract_protocol_links(
-                    item
-                )
+        uris, jsons = (
+            parse_content(
+                text
             )
-
-        configs = unique_preserve_order(
-            configs
         )
 
-        if configs:
+        if uris:
 
             print(
-                f"[SOURCE] "
-                f"{candidate}"
+                f"[SOURCE] URI configs: "
+                f"{len(uris)}"
             )
+
+            uri_configs.extend(
+                uris
+            )
+
+        if jsons:
 
             print(
-                f"[SOURCE] configs: "
-                f"{len(configs)}"
+                f"[SOURCE] JSON configs: "
+                f"{len(jsons)}"
             )
 
-            all_configs.extend(
-                configs
+            json_configs.extend(
+                jsons
             )
 
-        else:
+        if not uris and not jsons:
 
             print(
-                f"[SOURCE] configs: 0 "
-                f"for {candidate}"
+                "[SOURCE] "
+                "No recognized config format"
             )
 
-            # Only show diagnostics for actual
-            # subscription candidates.
-            if (
-                not candidate.lower()
-                .endswith(
-                    (
-                        ".js",
-                        ".css",
-                        ".jpg",
-                        ".jpeg",
-                        ".png",
-                        ".gif",
-                        ".webp",
-                    )
-                )
-            ):
+            debug_preview(
+                text
+            )
 
-                print_debug_preview(
-                    text
-                )
-
-    return unique_preserve_order(
-        all_configs
-    )
-
-
-# ============================================================
-# VALIDATE CONFIG
-# ============================================================
-
-def is_supported_config(
-    value: str,
-) -> bool:
-
-    value = value.strip()
-
-    return value.lower().startswith(
-        PROTOCOLS
-    )
-
-
-# ============================================================
-# UPDATE GIST
-# ============================================================
-
-def update_gist(
-    content: str,
-):
-
-    if not GIST_TOKEN:
-
-        raise RuntimeError(
-            "GIST_TOKEN is missing"
-        )
-
-    if not GIST_ID:
-
-        raise RuntimeError(
-            "GIST_ID is missing"
-        )
-
-    url = (
-        "https://api.github.com/gists/"
-        f"{GIST_ID}"
-    )
-
-    headers = {
-        "Authorization":
-            f"Bearer {GIST_TOKEN}",
-
-        "Accept":
-            "application/vnd.github+json",
-
-        "X-GitHub-Api-Version":
-            "2022-11-28",
-
-        "User-Agent":
-            "telegram-v2ray-parser",
-    }
-
-    payload = {
-        "files": {
-            GIST_FILENAME: {
-                "content": content
-            }
-        }
-    }
-
-    print()
-    print(
-        f"[GIST] Updating "
-        f"{GIST_FILENAME}"
-    )
-
-    response = requests.patch(
-        url,
-        headers=headers,
-        json=payload,
-        timeout=REQUEST_TIMEOUT,
-    )
-
-    print(
-        f"[GIST] HTTP "
-        f"{response.status_code}"
-    )
-
-    if not response.ok:
-
-        print(
-            response.text[:2000]
-        )
-
-        raise RuntimeError(
-            "GitHub Gist update failed"
-        )
-
-    print(
-        "[GIST] Updated successfully"
+    return (
+        unique_preserve_order(
+            uri_configs
+        ),
+        json_configs,
     )
 
 
@@ -1387,7 +1213,7 @@ def main():
 
     print(
         "Telegram latest post -> "
-        "subscriptions -> Gist"
+        "V2Ray/Xray -> Gist"
     )
 
     print("=" * 70)
@@ -1405,16 +1231,12 @@ def main():
         )
 
     # --------------------------------------------------------
-    # 1. Read public channel.
+    # Telegram
     # --------------------------------------------------------
 
     channel_html = (
         get_channel_page()
     )
-
-    # --------------------------------------------------------
-    # 2. Find newest post.
-    # --------------------------------------------------------
 
     post_url = (
         get_last_post_url(
@@ -1422,16 +1244,14 @@ def main():
         )
     )
 
-    # --------------------------------------------------------
-    # 3. Fetch newest post.
-    # --------------------------------------------------------
-
-    post_html = fetch_post(
-        post_url
+    post_html = (
+        fetch_post(
+            post_url
+        )
     )
 
     # --------------------------------------------------------
-    # 4. Extract external URLs.
+    # URLs
     # --------------------------------------------------------
 
     source_urls = (
@@ -1458,15 +1278,15 @@ def main():
     if not source_urls:
 
         raise RuntimeError(
-            "No external HTTPS links "
-            "found in latest post"
+            "No external HTTPS sources"
         )
 
     # --------------------------------------------------------
-    # 5. Parse every source.
+    # Parse
     # --------------------------------------------------------
 
-    all_configs = []
+    all_uri_configs = []
+    all_json_configs = []
 
     for i, source_url in enumerate(
         source_urls,
@@ -1474,9 +1294,7 @@ def main():
     ):
 
         print()
-        print(
-            "=" * 70
-        )
+        print("=" * 70)
 
         print(
             f"[{i}/{len(source_urls)}] "
@@ -1487,17 +1305,18 @@ def main():
             source_url
         )
 
-        configs = parse_source(
-            source_url
+        uris, jsons = (
+            parse_source(
+                source_url
+            )
         )
 
-        print(
-            f"[SOURCE] Total configs: "
-            f"{len(configs)}"
+        all_uri_configs.extend(
+            uris
         )
 
-        all_configs.extend(
-            configs
+        all_json_configs.extend(
+            jsons
         )
 
         time.sleep(
@@ -1505,80 +1324,83 @@ def main():
         )
 
     # --------------------------------------------------------
-    # 6. Normalize / deduplicate.
+    # Deduplicate URI configs.
     # --------------------------------------------------------
 
-    normalized = []
-
-    for config in all_configs:
-
-        config = clean_config(
-            config
-        )
-
-        if is_supported_config(
-            config
-        ):
-
-            normalized.append(
-                config
-            )
-
-    all_configs = (
+    all_uri_configs = (
         unique_preserve_order(
-            normalized
+            x.strip()
+            for x in all_uri_configs
+            if x.strip()
         )
     )
 
     # --------------------------------------------------------
-    # 7. Statistics.
+    # Deduplicate JSON configs.
+    #
+    # JSON configs don't necessarily have stable key order,
+    # so serialize with sorted keys and use that as identity.
+    # --------------------------------------------------------
+
+    unique_json = []
+    seen_json = set()
+
+    for config in all_json_configs:
+
+        try:
+
+            normalized = json.dumps(
+                config,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(
+                    ",",
+                    ":",
+                ),
+            )
+
+            if normalized in seen_json:
+                continue
+
+            seen_json.add(
+                normalized
+            )
+
+            unique_json.append(
+                config
+            )
+
+        except Exception:
+            continue
+
+    # --------------------------------------------------------
+    # Statistics
     # --------------------------------------------------------
 
     print()
     print("=" * 70)
 
     print(
-        "[RESULT] "
-        f"Unique configs: "
-        f"{len(all_configs)}"
+        f"[RESULT] URI configs: "
+        f"{len(all_uri_configs)}"
+    )
+
+    print(
+        f"[RESULT] JSON configs: "
+        f"{len(unique_json)}"
     )
 
     print("=" * 70)
 
-    protocol_counts = {}
-
-    for config in all_configs:
-
-        protocol = config.split(
-            "://",
-            1
-        )[0].lower()
-
-        protocol_counts[
-            protocol
-        ] = (
-            protocol_counts.get(
-                protocol,
-                0
-            )
-            + 1
-        )
-
-    for protocol, count in sorted(
-        protocol_counts.items()
-    ):
-
-        print(
-            f"  {protocol}: {count}"
-        )
-
     # --------------------------------------------------------
     # IMPORTANT:
-    #
-    # Never overwrite Gist with an empty result.
+    # Don't overwrite Gist with empty result.
     # --------------------------------------------------------
 
-    if not all_configs:
+    if (
+        not all_uri_configs
+        and not unique_json
+    ):
 
         raise RuntimeError(
             "No supported configs found. "
@@ -1586,34 +1408,124 @@ def main():
         )
 
     # --------------------------------------------------------
-    # 8. Build subscription.
+    # OUTPUT
+    #
+    # If JSON configs were found, write a proper JSON array.
+    #
+    # Otherwise write normal subscription URLs.
     # --------------------------------------------------------
 
-    output = (
-        "\n".join(
-            all_configs
+    if unique_json:
+
+        output_filename = (
+            GIST_FILENAME
         )
-        + "\n"
+
+        output = json.dumps(
+            unique_json,
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n"
+
+        print(
+            "[RESULT] Output format: "
+            "Xray/V2Ray JSON"
+        )
+
+    else:
+
+        output_filename = (
+            GIST_FILENAME
+        )
+
+        output = (
+            "\n".join(
+                all_uri_configs
+            )
+            + "\n"
+        )
+
+        print(
+            "[RESULT] Output format: "
+            "URI subscription"
+        )
+
+    # --------------------------------------------------------
+    # Gist update
+    # --------------------------------------------------------
+
+    url = (
+        "https://api.github.com/gists/"
+        f"{GIST_ID}"
     )
 
-    # --------------------------------------------------------
-    # 9. Update Gist.
-    # --------------------------------------------------------
+    headers = {
+        "Authorization":
+            f"Bearer {GIST_TOKEN}",
 
-    update_gist(
-        output
+        "Accept":
+            "application/vnd.github+json",
+
+        "X-GitHub-Api-Version":
+            "2022-11-28",
+
+        "User-Agent":
+            "telegram-v2ray-parser",
+    }
+
+    payload = {
+        "files": {
+            output_filename: {
+                "content": output
+            }
+        }
+    }
+
+    print(
+        f"[GIST] Updating "
+        f"{output_filename}"
+    )
+
+    response = requests.patch(
+        url,
+        headers=headers,
+        json=payload,
+        timeout=REQUEST_TIMEOUT,
+    )
+
+    print(
+        f"[GIST] HTTP "
+        f"{response.status_code}"
+    )
+
+    if not response.ok:
+
+        print(
+            response.text[:2000]
+        )
+
+        raise RuntimeError(
+            "Gist update failed"
+        )
+
+    print(
+        "[GIST] Updated successfully"
     )
 
     print()
     print(
-        "[DONE] "
-        f"{len(all_configs)} configs "
-        "written to Gist"
+        f"[DONE] JSON configs: "
+        f"{len(unique_json)}"
+    )
+
+    print(
+        f"[DONE] URI configs: "
+        f"{len(all_uri_configs)}"
     )
 
 
 # ============================================================
-# ENTRY POINT
+# ENTRY
 # ============================================================
 
 if __name__ == "__main__":
@@ -1624,16 +1536,12 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
 
-        print(
-            "\nInterrupted."
-        )
-
         sys.exit(130)
 
     except Exception as exc:
 
         print(
-            "\n[FATAL] "
+            "[FATAL] "
             f"{type(exc).__name__}: "
             f"{exc}"
         )
