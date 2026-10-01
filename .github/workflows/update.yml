@@ -6,7 +6,7 @@ on:
   schedule:
     # Every 6 hours.
     # GitHub cron uses UTC.
-    - cron: "0 */6 * * *"
+    - cron: "0 1,6,10,12,16,19,23 * * *"
 
 permissions:
   contents: read
@@ -40,7 +40,7 @@ jobs:
           TELEGRAM_CHANNEL: happvpn
 
           # File inside the Gist.
-          GIST_FILENAME: configs.txt
+          GIST_FILENAME: configs.json
 
           # HTTP timeout.
           REQUEST_TIMEOUT: "30"
