@@ -180,4 +180,4 @@ jobs:
 
           echo "[GITVERSE] Push completed."
           echo "[GITVERSE] Done."
-          echo "[GITVERSE] File: https://gitverse.ru/mirgittech/happ/content/master/happ.json"
+          echo "[GITVERSE] File: https://gitverse.ru/mirgittech/happ/content/master/happ.txt"
