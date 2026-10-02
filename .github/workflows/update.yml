@@ -48,7 +48,7 @@ jobs:
 
           TELEGRAM_CHANNEL: happvpn
 
-          # Теперь Gist содержит обычный список URI
+          # Gist contains ordinary URI list
           GIST_FILENAME: happ.txt
 
           REQUEST_TIMEOUT: "60"
@@ -88,19 +88,28 @@ jobs:
           import json
           from pathlib import Path
 
-          data = json.loads(Path("gist.json").read_text(encoding="utf-8"))
+          data = json.loads(
+              Path("gist.json").read_text(encoding="utf-8")
+          )
 
           filename = "happ.txt"
 
           if filename not in data["files"]:
-              raise SystemExit(f"[ERROR] {filename} not found in Gist")
+              raise SystemExit(
+                  f"[ERROR] {filename} not found in Gist"
+              )
 
           content = data["files"][filename]["content"]
 
           if not content.strip():
-              raise SystemExit("[ERROR] Gist file is empty")
+              raise SystemExit(
+                  "[ERROR] Gist file is empty"
+              )
 
-          Path(filename).write_text(content, encoding="utf-8")
+          Path(filename).write_text(
+              content,
+              encoding="utf-8"
+          )
 
           print(f"[GIST] Saved {filename}")
           print(
@@ -138,7 +147,11 @@ jobs:
                   bad.append(line[:100])
 
           if bad:
-              print("[WARNING] Some lines are not recognized URI:")
+              print(
+                  "[WARNING] Some lines are not "
+                  "recognized URI:"
+              )
+
               for item in bad[:10]:
                   print(f"  {item}")
 
@@ -157,83 +170,9 @@ jobs:
           base64 -w 0 happ.txt > happ_base64.txt
 
           echo "[BASE64] Done."
-          echo "[BASE64] Original size: $(wc -c < happ.txt) bytes"
-          echo "[BASE64] Base64 size:   $(wc -c < happ_base64.txt) bytes"
 
-      # ============================================================
-      # Push Base64 subscription to GitVerse
-      # ============================================================
-      - name: Push to GitVerse
-        env:
-          GV_USER: ${{ secrets.GV_USER }}
-          GV_TOKEN: ${{ secrets.GV_TOKEN }}
+          echo \
+            "[BASE64] Original size: $(wc -c < happ.txt) bytes"
 
-        run: |
-          set -e
-
-          export GIT_TERMINAL_PROMPT=0
-
-          # Git transport timeout
-          export GIT_HTTP_LOW_SPEED_LIMIT=1
-          export GIT_HTTP_LOW_SPEED_TIME=120
-
-          echo "[GITVERSE] Cloning repository..."
-
-          timeout 120s git clone \
-            --depth 1 \
-            --branch master \
-            "https://${GV_USER}:${GV_TOKEN}@gitverse.ru/mirgittech/happ.git" \
-            gitverse
-
-          echo "[GITVERSE] Clone completed."
-
-          # ----------------------------------------------------------
-          # Copy Base64 data
-          # ----------------------------------------------------------
-          echo "[GITVERSE] Copying Base64 subscription..."
-
-          cp happ_base64.txt gitverse/happ.txt
-
-          cd gitverse
-
-          # ----------------------------------------------------------
-          # Git identity
-          # ----------------------------------------------------------
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-
-          # ----------------------------------------------------------
-          # Stage changes
-          # ----------------------------------------------------------
-          git add happ.txt
-
-          # ----------------------------------------------------------
-          # Check whether file changed
-          # ----------------------------------------------------------
-          if git diff --cached --quiet; then
-            echo "[GITVERSE] No changes."
-            exit 0
-          fi
-
-          # ----------------------------------------------------------
-          # Commit
-          # ----------------------------------------------------------
-          echo "[GITVERSE] Creating commit..."
-
-          git commit \
-            -m "Update happ.txt $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-
-          echo "[GITVERSE] Commit completed."
-
-          # ----------------------------------------------------------
-          # Push
-          # ----------------------------------------------------------
-          echo "[GITVERSE] Pushing to master..."
-
-          timeout 120s git push origin master
-
-          echo "[GITVERSE] Push completed."
-          echo "[GITVERSE] Done."
-
-          echo "[GITVERSE] File:"
-          echo "https://gitverse.ru/mirgittech/happ/content/master/happ.txt"
+          echo \
+            "[BASE64] Base64 size:   $(wc -c < happ_base64.txt) bytes"
