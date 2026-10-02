@@ -547,58 +547,152 @@ def extract_happ_links(
 
 def get_hpwrr_platform():
     """
-    Return hpwnr release asset platform name.
+    Return exact hpwnr GitHub release asset name.
 
-    GitHub Actions Ubuntu is normally x86_64.
+    Actual release assets:
+        hpwnr-linux-x86_64
+        hpwnr-linux-x86
+        hpwnr-linux-arm64
+        hpwnr-linux-armv7
+        hpwnr-linux-riscv64
+        hpwnr-android-arm64
+        hpwnr-android-armv7
+        hpwnr-android-x86
+        hpwnr-android-x86_64
+        hpwnr-macos-arm64
+        hpwnr-macos-x86_64
+        hpwnr-windows-x64.exe
+        hpwnr-windows-x86.exe
     """
 
-    machine = (
-        platform.machine()
-        .lower()
-    )
+    system = platform.system().lower()
+    machine = platform.machine().lower()
 
-    if machine in (
-        "x86_64",
-        "amd64",
-    ):
+    # --------------------------------------------------------
+    # Linux
+    # --------------------------------------------------------
 
-        return "x86_64-unknown-linux-musl"
+    if system == "linux":
 
-    if machine in (
-        "aarch64",
-        "arm64",
-    ):
+        if machine in (
+            "x86_64",
+            "amd64",
+        ):
+            return "hpwnr-linux-x86_64"
 
-        return "aarch64-unknown-linux-musl"
+        if machine in (
+            "aarch64",
+            "arm64",
+        ):
+            return "hpwnr-linux-arm64"
 
-    if machine in (
-        "armv7l",
-        "armv7",
-    ):
+        if machine in (
+            "armv7l",
+            "armv7",
+        ):
+            return "hpwnr-linux-armv7"
 
-        return "armv7-unknown-linux-musleabihf"
+        if machine in (
+            "i386",
+            "i686",
+            "x86",
+        ):
+            return "hpwnr-linux-x86"
 
-    if machine in (
-        "i386",
-        "i686",
-        "x86",
-    ):
+        if machine in (
+            "riscv64",
+        ):
+            return "hpwnr-linux-riscv64"
 
-        return "i686-unknown-linux-musl"
+    # --------------------------------------------------------
+    # Android
+    # --------------------------------------------------------
+
+    if system == "android":
+
+        if machine in (
+            "aarch64",
+            "arm64",
+        ):
+            return "hpwnr-android-arm64"
+
+        if machine in (
+            "armv7l",
+            "armv7",
+        ):
+            return "hpwnr-android-armv7"
+
+        if machine in (
+            "x86_64",
+            "amd64",
+        ):
+            return "hpwnr-android-x86_64"
+
+        if machine in (
+            "i386",
+            "i686",
+            "x86",
+        ):
+            return "hpwnr-android-x86"
+
+    # --------------------------------------------------------
+    # macOS
+    # --------------------------------------------------------
+
+    if system == "darwin":
+
+        if machine in (
+            "arm64",
+            "aarch64",
+        ):
+            return "hpwnr-macos-arm64"
+
+        if machine in (
+            "x86_64",
+            "amd64",
+        ):
+            return "hpwnr-macos-x86_64"
+
+    # --------------------------------------------------------
+    # Windows
+    # --------------------------------------------------------
+
+    if system == "windows":
+
+        if machine in (
+            "x86_64",
+            "amd64",
+        ):
+            return "hpwnr-windows-x64.exe"
+
+        if machine in (
+            "i386",
+            "i686",
+            "x86",
+        ):
+            return "hpwnr-windows-x86.exe"
 
     raise RuntimeError(
-        "Unsupported Linux architecture: "
-        f"{machine}"
+        "Unsupported hpwnr platform: "
+        f"system={system}, "
+        f"architecture={machine}"
     )
 
 
 def find_hpwrr_local():
     """
-    Find hpwnr in:
-      1. HPWNR_BIN
-      2. PATH
-      3. ./.hpwnr/hpwnr
+    Find hpwnr executable.
+
+    Search order:
+
+        1. HPWNR_BIN
+        2. PATH
+        3. ./.hpwnr/hpwnr
     """
+
+    # --------------------------------------------------------
+    # Explicit HPWNR_BIN
+    # --------------------------------------------------------
 
     if HPWNR_BIN:
 
@@ -612,43 +706,52 @@ def find_hpwrr_local():
                 path
             )
 
-        # Maybe it is a command name.
+        # HPWNR_BIN can also be a command name.
         return HPWNR_BIN
 
-    # PATH
-    for command in (
-        "hpwnr",
-    ):
+    # --------------------------------------------------------
+    # Search in PATH
+    # --------------------------------------------------------
 
-        try:
+    try:
 
-            result = subprocess.run(
-                [
-                    command,
-                    "h",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+        result = subprocess.run(
+            [
+                "hpwnr",
+                "h",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
 
-            if result.returncode in (
-                0,
-                1,
-            ):
-
-                return command
-
-        except (
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
+        if result.returncode in (
+            0,
+            1,
         ):
 
-            pass
+            return "hpwnr"
+
+    except (
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+        OSError,
+    ):
+
+        pass
+
+    # --------------------------------------------------------
+    # Local downloaded binary
+    # --------------------------------------------------------
 
     local = (
         HPWNR_DIR
-        / "hpwnr"
+        / (
+            "hpwnr.exe"
+            if platform.system().lower()
+            == "windows"
+            else "hpwnr"
+        )
     )
 
     if local.exists():
@@ -662,13 +765,8 @@ def find_hpwrr_local():
 
 def install_hpwrr():
     """
-    Download the latest hpwnr release binary.
-
-    The hpwnr project publishes release assets in the form:
-
-        hpwnr-<platform>
-
-    according to its README.
+    Download the latest hpwnr release binary
+    from GitHub Releases.
     """
 
     if not AUTO_INSTALL_HPWNR:
@@ -678,25 +776,8 @@ def install_hpwrr():
             "AUTO_INSTALL_HPWNR=0"
         )
 
-    system = (
-        platform.system()
-        .lower()
-    )
-
-    if system != "linux":
-
-        raise RuntimeError(
-            "Automatic hpwnr installation "
-            "currently expects Linux. "
-            "Set HPWNR_BIN manually."
-        )
-
-    target = (
-        get_hpwrr_platform()
-    )
-
     asset_name = (
-        f"hpwnr-{target}"
+        get_hpwrr_platform()
     )
 
     print()
@@ -705,12 +786,12 @@ def install_hpwrr():
     )
 
     print(
-        f"[HPWNR] Target: {target}"
-    )
-
-    print(
         f"[HPWNR] Asset: {asset_name}"
     )
+
+    # --------------------------------------------------------
+    # GitHub Releases API
+    # --------------------------------------------------------
 
     api_url = (
         "https://api.github.com/repos/"
@@ -742,6 +823,21 @@ def install_hpwrr():
 
     release = response.json()
 
+    release_tag = (
+        release.get(
+            "tag_name",
+            "unknown",
+        )
+    )
+
+    print(
+        f"[HPWNR] Release: {release_tag}"
+    )
+
+    # --------------------------------------------------------
+    # Find exact asset
+    # --------------------------------------------------------
+
     assets = (
         release.get(
             "assets",
@@ -759,6 +855,7 @@ def install_hpwrr():
         ):
 
             asset = candidate
+
             break
 
     if asset is None:
@@ -783,22 +880,45 @@ def install_hpwrr():
     if not download_url:
 
         raise RuntimeError(
-            "hpwnr release asset has "
-            "no download URL"
+            "hpwnr release asset "
+            "has no download URL"
         )
+
+    # --------------------------------------------------------
+    # Prepare directory
+    # --------------------------------------------------------
 
     HPWNR_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
+    if (
+        platform.system().lower()
+        == "windows"
+    ):
+
+        binary_name = (
+            "hpwnr.exe"
+        )
+
+    else:
+
+        binary_name = (
+            "hpwnr"
+        )
+
     binary_path = (
         HPWNR_DIR
-        / "hpwnr"
+        / binary_name
     )
 
+    # --------------------------------------------------------
+    # Download
+    # --------------------------------------------------------
+
     print(
-        f"[HPWNR] Downloading:"
+        "[HPWNR] Downloading:"
     )
 
     print(
@@ -817,6 +937,26 @@ def install_hpwrr():
 
     response.raise_for_status()
 
+    total_size = (
+        response.headers.get(
+            "Content-Length"
+        )
+    )
+
+    if total_size:
+
+        try:
+
+            total_size = int(
+                total_size
+            )
+
+        except ValueError:
+
+            total_size = None
+
+    downloaded = 0
+
     with open(
         binary_path,
         "wb",
@@ -826,21 +966,61 @@ def install_hpwrr():
             chunk_size=65536
         ):
 
-            if chunk:
+            if not chunk:
+                continue
 
-                file.write(
-                    chunk
-                )
+            file.write(
+                chunk
+            )
 
-    current_mode = (
-        binary_path.stat().st_mode
-    )
+            downloaded += len(
+                chunk
+            )
 
-    binary_path.chmod(
-        current_mode
-        | stat.S_IXUSR
-        | stat.S_IXGRP
-        | stat.S_IXOTH
+    # --------------------------------------------------------
+    # Make executable on Unix
+    # --------------------------------------------------------
+
+    if (
+        platform.system().lower()
+        != "windows"
+    ):
+
+        current_mode = (
+            binary_path.stat().st_mode
+        )
+
+        binary_path.chmod(
+            current_mode
+            | stat.S_IXUSR
+            | stat.S_IXGRP
+            | stat.S_IXOTH
+        )
+
+    # --------------------------------------------------------
+    # Basic validation
+    # --------------------------------------------------------
+
+    if not binary_path.exists():
+
+        raise RuntimeError(
+            "hpwnr download finished "
+            "but binary does not exist"
+        )
+
+    if (
+        binary_path.stat().st_size
+        == 0
+    ):
+
+        raise RuntimeError(
+            "Downloaded hpwnr binary "
+            "is empty"
+        )
+
+    print(
+        f"[HPWNR] Downloaded: "
+        f"{downloaded} bytes"
     )
 
     print(
@@ -859,6 +1039,9 @@ def install_hpwrr():
 def get_hpwnr():
     """
     Return usable hpwnr executable.
+
+    If hpwnr is missing, automatically
+    downloads the correct GitHub Release asset.
     """
 
     existing = (
@@ -881,13 +1064,13 @@ def decrypt_happ_link(
     happ_link: str,
 ):
     """
-    Decrypt a Happ crypt/crypt2/crypt3/crypt4/crypt5 link.
+    Decrypt Happ crypt/crypt2/crypt3/crypt4/crypt5 link.
 
-    hpwnr contract:
+    hpwnr usage:
 
         hpwnr happ://crypt5/...
 
-    decrypted URL is written to stdout.
+    Decrypted URL is returned from stdout.
     """
 
     print()
@@ -942,6 +1125,10 @@ def decrypt_happ_link(
         result.stderr.strip()
     )
 
+    # --------------------------------------------------------
+    # hpwnr failed
+    # --------------------------------------------------------
+
     if result.returncode != 0:
 
         print(
@@ -954,7 +1141,18 @@ def decrypt_happ_link(
                 stderr[:3000]
             )
 
+        else:
+
+            print(
+                f"[HAPP] hpwnr exit code: "
+                f"{result.returncode}"
+            )
+
         return None
+
+    # --------------------------------------------------------
+    # Empty output
+    # --------------------------------------------------------
 
     if not stdout:
 
@@ -971,15 +1169,20 @@ def decrypt_happ_link(
         return None
 
     # --------------------------------------------------------
-    # hpwnr normally returns exactly the decrypted URL.
-    # To be safe, search for HTTPS/HTTP inside the output.
+    # hpwnr normally returns exactly
+    # the decrypted URL.
+    #
+    # But if it prints additional text,
+    # search HTTP/HTTPS URL inside stdout.
     # --------------------------------------------------------
 
     if is_http_url(
         stdout
     ):
 
-        decrypted = stdout
+        decrypted = (
+            stdout
+        )
 
     else:
 
@@ -1006,6 +1209,16 @@ def decrypt_happ_link(
             urls[0]
         )
 
+    # --------------------------------------------------------
+    # Normalize
+    # --------------------------------------------------------
+
+    decrypted = (
+        normalize_url(
+            decrypted
+        )
+    )
+
     print(
         "[HAPP] Decrypted:"
     )
@@ -1023,6 +1236,14 @@ def process_happ_links(
     """
     Extract all Happ encrypted links from
     Telegram post and decrypt them.
+
+    Supported:
+
+        happ://crypt/...
+        happ://crypt2/...
+        happ://crypt3/...
+        happ://crypt4/...
+        happ://crypt5/...
     """
 
     happ_links = (
@@ -1066,14 +1287,29 @@ def process_happ_links(
             f"{index}/{len(happ_links)}"
         )
 
-        decrypted = (
-            decrypt_happ_link(
-                hpwnr_path,
-                happ_link,
+        try:
+
+            decrypted = (
+                decrypt_happ_link(
+                    hpwnr_path,
+                    happ_link,
+                )
             )
-        )
+
+        except Exception as exc:
+
+            print(
+                "[HAPP] Exception:"
+            )
+
+            print(
+                repr(exc)
+            )
+
+            continue
 
         if not decrypted:
+
             continue
 
         if is_http_url(
@@ -1084,6 +1320,10 @@ def process_happ_links(
                 decrypted
             )
 
+    # --------------------------------------------------------
+    # Remove duplicates
+    # --------------------------------------------------------
+
     decrypted_urls = (
         unique_preserve_order(
             decrypted_urls
@@ -1092,8 +1332,9 @@ def process_happ_links(
 
     print()
     print(
-        f"[HAPP] Decrypted HTTPS "
-        f"sources: {len(decrypted_urls)}"
+        f"[HAPP] Decrypted HTTP(S) "
+        f"sources: "
+        f"{len(decrypted_urls)}"
     )
 
     for url in decrypted_urls:
