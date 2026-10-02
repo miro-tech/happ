@@ -29,6 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
+      # ============================================================
+      # Parse latest Telegram post
+      # ============================================================
       - name: Parse latest Telegram post
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
@@ -43,8 +46,8 @@ jobs:
         run: |
           python parser.py
 
-            # ============================================================
-      # Download JSON from Gist and encode to Base64
+      # ============================================================
+      # Download JSON from Gist
       # ============================================================
       - name: Download JSON from Gist
         env:
