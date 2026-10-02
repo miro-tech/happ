@@ -134,11 +134,11 @@ jobs:
           echo "[GITVERSE] Clone completed."
 
           # ----------------------------------------------------------
-          # Copy Base64 file
+          # Copy Base64 data
           # ----------------------------------------------------------
           echo "[GITVERSE] Copying Base64 data..."
 
-          cp happ_base64.txt gitverse/happ.json
+          cp happ_base64.txt gitverse/happ.txt
 
           cd gitverse
 
@@ -151,7 +151,7 @@ jobs:
           # ----------------------------------------------------------
           # Stage changes
           # ----------------------------------------------------------
-          git add happ.json
+          git add happ.txt
 
           # ----------------------------------------------------------
           # Check whether file changed
@@ -167,7 +167,7 @@ jobs:
           echo "[GITVERSE] Creating commit..."
 
           git commit \
-            -m "Update happ.json $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            -m "Update happ.txt $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
           echo "[GITVERSE] Commit completed."
 
