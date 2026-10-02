@@ -16,6 +16,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import (
     parse_qs,
+    quote,
+    urlencode,
     unquote,
     urlsplit,
 )
@@ -44,7 +46,7 @@ GIST_ID = os.getenv(
 
 GIST_FILENAME = os.getenv(
     "GIST_FILENAME",
-    "configs.json",
+    "configs.txt",
 ).strip()
 
 REQUEST_TIMEOUT = int(
@@ -68,9 +70,10 @@ DEBUG_PREVIEW = int(
     )
 )
 
-# ------------------------------------------------------------
-# hpwnr
-# ------------------------------------------------------------
+
+# ============================================================
+# HPWNR
+# ============================================================
 
 HPWNR_BIN = os.getenv(
     "HPWNR_BIN",
@@ -93,13 +96,11 @@ AUTO_INSTALL_HPWNR = os.getenv(
     "no",
 )
 
-HPWNR_REPO = (
-    "Omegaplexx/hpwnr"
-)
+HPWNR_REPO = "Omegaplexx/hpwnr"
 
 
 # ============================================================
-# HTTP SESSION
+# HTTP
 # ============================================================
 
 USER_AGENT = (
@@ -192,9 +193,7 @@ class TelegramHTMLParser(HTMLParser):
     ):
 
         if data:
-            self.text_parts.append(
-                data
-            )
+            self.text_parts.append(data)
 
 
 # ============================================================
@@ -205,9 +204,7 @@ def normalize_url(
     url: str,
 ) -> str:
 
-    url = html.unescape(
-        url
-    ).strip()
+    url = html.unescape(url).strip()
 
     url = url.replace(
         "\\/",
@@ -227,19 +224,12 @@ def is_http_url(
 
     try:
 
-        parsed = urlsplit(
-            url
-        )
+        parsed = urlsplit(url)
 
         return (
             parsed.scheme.lower()
-            in (
-                "http",
-                "https",
-            )
-            and bool(
-                parsed.netloc
-            )
+            in ("http", "https")
+            and bool(parsed.netloc)
         )
 
     except Exception:
@@ -247,9 +237,8 @@ def is_http_url(
         return False
 
 
-def unique_preserve_order(
-    items,
-):
+def unique_preserve_order(items):
+
     result = []
     seen = set()
 
@@ -267,9 +256,7 @@ def clean_config(
     value: str,
 ) -> str:
 
-    value = html.unescape(
-        value
-    )
+    value = html.unescape(value)
 
     value = value.replace(
         "\\/",
@@ -279,6 +266,21 @@ def clean_config(
     return value.strip(
         " \t\r\n\"'`<>()[]{} ,;"
     )
+
+
+def first_value(
+    obj,
+    *keys,
+    default=None,
+):
+    for key in keys:
+
+        value = obj.get(key)
+
+        if value is not None and value != "":
+            return value
+
+    return default
 
 
 # ============================================================
@@ -293,8 +295,7 @@ def get_channel_page():
     )
 
     print(
-        f"[TELEGRAM] Reading channel: "
-        f"{url}"
+        f"[TELEGRAM] Reading channel: {url}"
     )
 
     response = SESSION.get(
@@ -326,9 +327,7 @@ def get_last_post_url(
 
     ids = [
         int(x)
-        for x in pattern.findall(
-            channel_html
-        )
+        for x in pattern.findall(channel_html)
     ]
 
     if not ids:
@@ -342,16 +341,13 @@ def get_last_post_url(
 
         ids = [
             int(x)
-            for x in pattern.findall(
-                channel_html
-            )
+            for x in pattern.findall(channel_html)
         ]
 
     if not ids:
 
         raise RuntimeError(
-            "Could not find Telegram "
-            "message IDs"
+            "Could not find Telegram message IDs"
         )
 
     last_id = max(ids)
@@ -363,13 +359,11 @@ def get_last_post_url(
     )
 
     print(
-        f"[TELEGRAM] Last post ID: "
-        f"{last_id}"
+        f"[TELEGRAM] Last post ID: {last_id}"
     )
 
     print(
-        f"[TELEGRAM] Last post: "
-        f"{post_url}"
+        f"[TELEGRAM] Last post: {post_url}"
     )
 
     return post_url
@@ -379,10 +373,7 @@ def fetch_post(
     post_url: str,
 ):
 
-    url = (
-        post_url
-        + "?embed=1"
-    )
+    url = post_url + "?embed=1"
 
     print(
         f"[TELEGRAM] GET {url}"
@@ -416,9 +407,7 @@ def is_ignored_url(
 
     try:
 
-        parsed = urlsplit(
-            url
-        )
+        parsed = urlsplit(url)
 
         host = (
             parsed.hostname
@@ -483,7 +472,7 @@ def is_ignored_url(
 
 
 # ============================================================
-# HAPP LINK EXTRACTION
+# HAPP
 # ============================================================
 
 def extract_happ_links(
@@ -493,24 +482,12 @@ def extract_happ_links(
     if not text:
         return []
 
-    text = html.unescape(
-        text
-    )
+    text = html.unescape(text)
 
     text = text.replace(
         "\\/",
         "/",
     )
-
-    # --------------------------------------------------------
-    # Important:
-    #
-    # Do NOT use \s as the ending condition here because
-    # crypt5 contains characters such as + / =.
-    #
-    # Telegram can expose the link either as visible text
-    # or inside an HTML attribute.
-    # --------------------------------------------------------
 
     pattern = re.compile(
         r"(?i)"
@@ -518,218 +495,99 @@ def extract_happ_links(
         r"[A-Za-z0-9+/=_-]+"
     )
 
-    found = pattern.findall(
-        text
-    )
+    found = pattern.findall(text)
 
     result = []
 
     for item in found:
 
-        item = normalize_url(
-            item
-        )
+        item = normalize_url(item)
 
         if item:
+            result.append(item)
 
-            result.append(
-                item
-            )
+    return unique_preserve_order(result)
 
-    return unique_preserve_order(
-        result
-    )
-
-
-# ============================================================
-# HPWNR
-# ============================================================
 
 def get_hpwrr_platform():
-    """
-    Return exact hpwnr GitHub release asset name.
-
-    Actual release assets:
-        hpwnr-linux-x86_64
-        hpwnr-linux-x86
-        hpwnr-linux-arm64
-        hpwnr-linux-armv7
-        hpwnr-linux-riscv64
-        hpwnr-android-arm64
-        hpwnr-android-armv7
-        hpwnr-android-x86
-        hpwnr-android-x86_64
-        hpwnr-macos-arm64
-        hpwnr-macos-x86_64
-        hpwnr-windows-x64.exe
-        hpwnr-windows-x86.exe
-    """
 
     system = platform.system().lower()
     machine = platform.machine().lower()
 
-    # --------------------------------------------------------
-    # Linux
-    # --------------------------------------------------------
-
     if system == "linux":
 
-        if machine in (
-            "x86_64",
-            "amd64",
-        ):
+        if machine in ("x86_64", "amd64"):
             return "hpwnr-linux-x86_64"
 
-        if machine in (
-            "aarch64",
-            "arm64",
-        ):
+        if machine in ("aarch64", "arm64"):
             return "hpwnr-linux-arm64"
 
-        if machine in (
-            "armv7l",
-            "armv7",
-        ):
+        if machine in ("armv7l", "armv7"):
             return "hpwnr-linux-armv7"
 
-        if machine in (
-            "i386",
-            "i686",
-            "x86",
-        ):
+        if machine in ("i386", "i686", "x86"):
             return "hpwnr-linux-x86"
 
-        if machine in (
-            "riscv64",
-        ):
+        if machine == "riscv64":
             return "hpwnr-linux-riscv64"
-
-    # --------------------------------------------------------
-    # Android
-    # --------------------------------------------------------
 
     if system == "android":
 
-        if machine in (
-            "aarch64",
-            "arm64",
-        ):
+        if machine in ("aarch64", "arm64"):
             return "hpwnr-android-arm64"
 
-        if machine in (
-            "armv7l",
-            "armv7",
-        ):
+        if machine in ("armv7l", "armv7"):
             return "hpwnr-android-armv7"
 
-        if machine in (
-            "x86_64",
-            "amd64",
-        ):
+        if machine in ("x86_64", "amd64"):
             return "hpwnr-android-x86_64"
 
-        if machine in (
-            "i386",
-            "i686",
-            "x86",
-        ):
+        if machine in ("i386", "i686", "x86"):
             return "hpwnr-android-x86"
-
-    # --------------------------------------------------------
-    # macOS
-    # --------------------------------------------------------
 
     if system == "darwin":
 
-        if machine in (
-            "arm64",
-            "aarch64",
-        ):
+        if machine in ("arm64", "aarch64"):
             return "hpwnr-macos-arm64"
 
-        if machine in (
-            "x86_64",
-            "amd64",
-        ):
+        if machine in ("x86_64", "amd64"):
             return "hpwnr-macos-x86_64"
-
-    # --------------------------------------------------------
-    # Windows
-    # --------------------------------------------------------
 
     if system == "windows":
 
-        if machine in (
-            "x86_64",
-            "amd64",
-        ):
+        if machine in ("x86_64", "amd64"):
             return "hpwnr-windows-x64.exe"
 
-        if machine in (
-            "i386",
-            "i686",
-            "x86",
-        ):
+        if machine in ("i386", "i686", "x86"):
             return "hpwnr-windows-x86.exe"
 
     raise RuntimeError(
         "Unsupported hpwnr platform: "
-        f"system={system}, "
-        f"architecture={machine}"
+        f"system={system}, architecture={machine}"
     )
 
 
 def find_hpwrr_local():
-    """
-    Find hpwnr executable.
-
-    Search order:
-
-        1. HPWNR_BIN
-        2. PATH
-        3. ./.hpwnr/hpwnr
-    """
-
-    # --------------------------------------------------------
-    # Explicit HPWNR_BIN
-    # --------------------------------------------------------
 
     if HPWNR_BIN:
 
-        path = Path(
-            HPWNR_BIN
-        )
+        path = Path(HPWNR_BIN)
 
         if path.exists():
+            return str(path)
 
-            return str(
-                path
-            )
-
-        # HPWNR_BIN can also be a command name.
         return HPWNR_BIN
-
-    # --------------------------------------------------------
-    # Search in PATH
-    # --------------------------------------------------------
 
     try:
 
         result = subprocess.run(
-            [
-                "hpwnr",
-                "h",
-            ],
+            ["hpwnr", "h"],
             capture_output=True,
             text=True,
             timeout=10,
         )
 
-        if result.returncode in (
-            0,
-            1,
-        ):
-
+        if result.returncode in (0, 1):
             return "hpwnr"
 
     except (
@@ -740,34 +598,22 @@ def find_hpwrr_local():
 
         pass
 
-    # --------------------------------------------------------
-    # Local downloaded binary
-    # --------------------------------------------------------
-
     local = (
         HPWNR_DIR
         / (
             "hpwnr.exe"
-            if platform.system().lower()
-            == "windows"
+            if platform.system().lower() == "windows"
             else "hpwnr"
         )
     )
 
     if local.exists():
-
-        return str(
-            local
-        )
+        return str(local)
 
     return None
 
 
 def install_hpwrr():
-    """
-    Download the latest hpwnr release binary
-    from GitHub Releases.
-    """
 
     if not AUTO_INSTALL_HPWNR:
 
@@ -776,22 +622,11 @@ def install_hpwrr():
             "AUTO_INSTALL_HPWNR=0"
         )
 
-    asset_name = (
-        get_hpwrr_platform()
-    )
+    asset_name = get_hpwrr_platform()
 
     print()
-    print(
-        "[HPWNR] hpwnr not found"
-    )
-
-    print(
-        f"[HPWNR] Asset: {asset_name}"
-    )
-
-    # --------------------------------------------------------
-    # GitHub Releases API
-    # --------------------------------------------------------
+    print("[HPWNR] hpwnr not found")
+    print(f"[HPWNR] Asset: {asset_name}")
 
     api_url = (
         "https://api.github.com/repos/"
@@ -801,10 +636,8 @@ def install_hpwrr():
     headers = {
         "Accept":
             "application/vnd.github+json",
-
         "X-GitHub-Api-Version":
             "2022-11-28",
-
         "User-Agent":
             "telegram-v2ray-parser",
     }
@@ -823,39 +656,27 @@ def install_hpwrr():
 
     release = response.json()
 
-    release_tag = (
-        release.get(
-            "tag_name",
-            "unknown",
-        )
+    release_tag = release.get(
+        "tag_name",
+        "unknown",
     )
 
     print(
         f"[HPWNR] Release: {release_tag}"
     )
 
-    # --------------------------------------------------------
-    # Find exact asset
-    # --------------------------------------------------------
-
-    assets = (
-        release.get(
-            "assets",
-            [],
-        )
+    assets = release.get(
+        "assets",
+        [],
     )
 
     asset = None
 
     for candidate in assets:
 
-        if (
-            candidate.get("name")
-            == asset_name
-        ):
+        if candidate.get("name") == asset_name:
 
             asset = candidate
-
             break
 
     if asset is None:
@@ -867,63 +688,36 @@ def install_hpwrr():
 
         raise RuntimeError(
             "Could not find hpwnr asset "
-            f"{asset_name}. "
-            f"Available: {available}"
+            f"{asset_name}. Available: {available}"
         )
 
-    download_url = (
-        asset.get(
-            "browser_download_url"
-        )
+    download_url = asset.get(
+        "browser_download_url"
     )
 
     if not download_url:
 
         raise RuntimeError(
-            "hpwnr release asset "
-            "has no download URL"
+            "hpwnr release asset has no download URL"
         )
-
-    # --------------------------------------------------------
-    # Prepare directory
-    # --------------------------------------------------------
 
     HPWNR_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    if (
-        platform.system().lower()
-        == "windows"
-    ):
-
-        binary_name = (
-            "hpwnr.exe"
-        )
-
-    else:
-
-        binary_name = (
-            "hpwnr"
-        )
+    binary_name = (
+        "hpwnr.exe"
+        if platform.system().lower() == "windows"
+        else "hpwnr"
+    )
 
     binary_path = (
-        HPWNR_DIR
-        / binary_name
+        HPWNR_DIR / binary_name
     )
 
-    # --------------------------------------------------------
-    # Download
-    # --------------------------------------------------------
-
-    print(
-        "[HPWNR] Downloading:"
-    )
-
-    print(
-        download_url
-    )
+    print("[HPWNR] Downloading:")
+    print(download_url)
 
     response = SESSION.get(
         download_url,
@@ -937,30 +731,9 @@ def install_hpwrr():
 
     response.raise_for_status()
 
-    total_size = (
-        response.headers.get(
-            "Content-Length"
-        )
-    )
-
-    if total_size:
-
-        try:
-
-            total_size = int(
-                total_size
-            )
-
-        except ValueError:
-
-            total_size = None
-
     downloaded = 0
 
-    with open(
-        binary_path,
-        "wb",
-    ) as file:
+    with open(binary_path, "wb") as file:
 
         for chunk in response.iter_content(
             chunk_size=65536
@@ -969,26 +742,15 @@ def install_hpwrr():
             if not chunk:
                 continue
 
-            file.write(
-                chunk
-            )
-
-            downloaded += len(
-                chunk
-            )
-
-    # --------------------------------------------------------
-    # Make executable on Unix
-    # --------------------------------------------------------
+            file.write(chunk)
+            downloaded += len(chunk)
 
     if (
         platform.system().lower()
         != "windows"
     ):
 
-        current_mode = (
-            binary_path.stat().st_mode
-        )
+        current_mode = binary_path.stat().st_mode
 
         binary_path.chmod(
             current_mode
@@ -997,10 +759,6 @@ def install_hpwrr():
             | stat.S_IXOTH
         )
 
-    # --------------------------------------------------------
-    # Basic validation
-    # --------------------------------------------------------
-
     if not binary_path.exists():
 
         raise RuntimeError(
@@ -1008,45 +766,25 @@ def install_hpwrr():
             "but binary does not exist"
         )
 
-    if (
-        binary_path.stat().st_size
-        == 0
-    ):
+    if binary_path.stat().st_size == 0:
 
         raise RuntimeError(
-            "Downloaded hpwnr binary "
-            "is empty"
+            "Downloaded hpwnr binary is empty"
         )
 
     print(
-        f"[HPWNR] Downloaded: "
-        f"{downloaded} bytes"
+        f"[HPWNR] Downloaded: {downloaded} bytes"
     )
 
-    print(
-        "[HPWNR] Installed:"
-    )
+    print("[HPWNR] Installed:")
+    print(binary_path)
 
-    print(
-        binary_path
-    )
-
-    return str(
-        binary_path
-    )
+    return str(binary_path)
 
 
 def get_hpwnr():
-    """
-    Return usable hpwnr executable.
 
-    If hpwnr is missing, automatically
-    downloads the correct GitHub Release asset.
-    """
-
-    existing = (
-        find_hpwrr_local()
-    )
+    existing = find_hpwrr_local()
 
     if existing:
 
@@ -1063,20 +801,9 @@ def decrypt_happ_link(
     hpwnr_path: str,
     happ_link: str,
 ):
-    """
-    Decrypt Happ crypt/crypt2/crypt3/crypt4/crypt5 link.
-
-    hpwnr usage:
-
-        hpwnr happ://crypt5/...
-
-    Decrypted URL is returned from stdout.
-    """
 
     print()
-    print(
-        "[HAPP] Decrypting:"
-    )
+    print("[HAPP] Decrypting:")
 
     print(
         happ_link[:120]
@@ -1105,44 +832,24 @@ def decrypt_happ_link(
 
         raise RuntimeError(
             "hpwnr executable could not "
-            "be started: "
-            f"{exc}"
+            f"be started: {exc}"
         )
 
     except subprocess.TimeoutExpired:
 
-        print(
-            "[HAPP] ERROR: timeout"
-        )
-
+        print("[HAPP] ERROR: timeout")
         return None
 
-    stdout = (
-        result.stdout.strip()
-    )
-
-    stderr = (
-        result.stderr.strip()
-    )
-
-    # --------------------------------------------------------
-    # hpwnr failed
-    # --------------------------------------------------------
+    stdout = result.stdout.strip()
+    stderr = result.stderr.strip()
 
     if result.returncode != 0:
 
-        print(
-            "[HAPP] ERROR:"
-        )
+        print("[HAPP] ERROR:")
 
         if stderr:
-
-            print(
-                stderr[:3000]
-            )
-
+            print(stderr[:3000])
         else:
-
             print(
                 f"[HAPP] hpwnr exit code: "
                 f"{result.returncode}"
@@ -1150,39 +857,18 @@ def decrypt_happ_link(
 
         return None
 
-    # --------------------------------------------------------
-    # Empty output
-    # --------------------------------------------------------
-
     if not stdout:
 
-        print(
-            "[HAPP] Empty result"
-        )
+        print("[HAPP] Empty result")
 
         if stderr:
-
-            print(
-                stderr[:1000]
-            )
+            print(stderr[:1000])
 
         return None
 
-    # --------------------------------------------------------
-    # hpwnr normally returns exactly
-    # the decrypted URL.
-    #
-    # But if it prints additional text,
-    # search HTTP/HTTPS URL inside stdout.
-    # --------------------------------------------------------
+    if is_http_url(stdout):
 
-    if is_http_url(
-        stdout
-    ):
-
-        decrypted = (
-            stdout
-        )
+        decrypted = stdout
 
     else:
 
@@ -1199,9 +885,7 @@ def decrypt_happ_link(
                 "in decrypted result"
             )
 
-            print(
-                stdout[:1000]
-            )
+            print(stdout[:1000])
 
             return None
 
@@ -1209,23 +893,12 @@ def decrypt_happ_link(
             urls[0]
         )
 
-    # --------------------------------------------------------
-    # Normalize
-    # --------------------------------------------------------
-
-    decrypted = (
-        normalize_url(
-            decrypted
-        )
-    )
-
-    print(
-        "[HAPP] Decrypted:"
-    )
-
-    print(
+    decrypted = normalize_url(
         decrypted
     )
+
+    print("[HAPP] Decrypted:")
+    print(decrypted)
 
     return decrypted
 
@@ -1233,46 +906,23 @@ def decrypt_happ_link(
 def process_happ_links(
     post_html: str,
 ):
-    """
-    Extract all Happ encrypted links from
-    Telegram post and decrypt them.
 
-    Supported:
-
-        happ://crypt/...
-        happ://crypt2/...
-        happ://crypt3/...
-        happ://crypt4/...
-        happ://crypt5/...
-    """
-
-    happ_links = (
-        extract_happ_links(
-            post_html
-        )
+    happ_links = extract_happ_links(
+        post_html
     )
 
     print()
-    print(
-        "=" * 70
-    )
-
+    print("=" * 70)
     print(
         f"[HAPP] Encrypted links: "
         f"{len(happ_links)}"
     )
-
-    print(
-        "=" * 70
-    )
+    print("=" * 70)
 
     if not happ_links:
-
         return []
 
-    hpwnr_path = (
-        get_hpwnr()
-    )
+    hpwnr_path = get_hpwnr()
 
     decrypted_urls = []
 
@@ -1289,59 +939,38 @@ def process_happ_links(
 
         try:
 
-            decrypted = (
-                decrypt_happ_link(
-                    hpwnr_path,
-                    happ_link,
-                )
+            decrypted = decrypt_happ_link(
+                hpwnr_path,
+                happ_link,
             )
 
         except Exception as exc:
 
-            print(
-                "[HAPP] Exception:"
-            )
-
-            print(
-                repr(exc)
-            )
-
+            print("[HAPP] Exception:")
+            print(repr(exc))
             continue
 
         if not decrypted:
-
             continue
 
-        if is_http_url(
-            decrypted
-        ):
+        if is_http_url(decrypted):
 
             decrypted_urls.append(
                 decrypted
             )
 
-    # --------------------------------------------------------
-    # Remove duplicates
-    # --------------------------------------------------------
-
-    decrypted_urls = (
-        unique_preserve_order(
-            decrypted_urls
-        )
+    decrypted_urls = unique_preserve_order(
+        decrypted_urls
     )
 
     print()
     print(
-        f"[HAPP] Decrypted HTTP(S) "
-        f"sources: "
+        f"[HAPP] Decrypted HTTP(S) sources: "
         f"{len(decrypted_urls)}"
     )
 
     for url in decrypted_urls:
-
-        print(
-            f"  {url}"
-        )
+        print(f"  {url}")
 
     return decrypted_urls
 
@@ -1356,42 +985,26 @@ def extract_post_urls(
 
     parser = TelegramHTMLParser()
 
-    parser.feed(
-        post_html
-    )
+    parser.feed(post_html)
 
     urls = []
 
-    # --------------------------------------------------------
-    # href
-    # --------------------------------------------------------
-
     for url in parser.links:
 
-        url = normalize_url(
-            url
-        )
+        url = normalize_url(url)
 
         if (
             is_http_url(url)
             and not is_ignored_url(url)
         ):
 
-            urls.append(
-                url
-            )
-
-    # --------------------------------------------------------
-    # visible text
-    # --------------------------------------------------------
+            urls.append(url)
 
     text = "\n".join(
         parser.text_parts
     )
 
-    text = html.unescape(
-        text
-    )
+    text = html.unescape(text)
 
     for url in re.findall(
         r"https?://[^\s\"'<>]+",
@@ -1399,22 +1012,16 @@ def extract_post_urls(
         re.I,
     ):
 
-        url = normalize_url(
-            url
-        )
+        url = normalize_url(url)
 
         if (
             is_http_url(url)
             and not is_ignored_url(url)
         ):
 
-            urls.append(
-                url
-            )
+            urls.append(url)
 
-    return unique_preserve_order(
-        urls
-    )
+    return unique_preserve_order(urls)
 
 
 # ============================================================
@@ -1425,15 +1032,11 @@ def extract_wrapped_urls(
     url: str,
 ):
 
-    result = [
-        url
-    ]
+    result = [url]
 
     try:
 
-        parsed = urlsplit(
-            url
-        )
+        parsed = urlsplit(url)
 
         query = parse_qs(
             parsed.query,
@@ -1457,31 +1060,17 @@ def extract_wrapped_urls(
                 [],
             ):
 
-                value = unquote(
-                    value
-                )
+                value = unquote(value)
+                value = normalize_url(value)
 
-                value = normalize_url(
-                    value
-                )
-
-                if is_http_url(
-                    value
-                ):
-
-                    result.append(
-                        value
-                    )
+                if is_http_url(value):
+                    result.append(value)
 
     except Exception as exc:
 
-        print(
-            f"[WRAPPER] {exc}"
-        )
+        print(f"[WRAPPER] {exc}")
 
-    return unique_preserve_order(
-        result
-    )
+    return unique_preserve_order(result)
 
 
 # ============================================================
@@ -1492,25 +1081,28 @@ def looks_like_xray_config(
     obj,
 ) -> bool:
 
-    if not isinstance(
-        obj,
-        dict,
-    ):
+    if not isinstance(obj, dict):
         return False
 
-    keys = set(
-        obj.keys()
-    )
+    keys = set(obj.keys())
 
     if (
         "inbounds" in keys
         and "outbounds" in keys
     ):
-
         return True
 
     if "outbounds" in keys:
+        return True
 
+    # Singe outbound-style config
+    if (
+        "protocol" in keys
+        and (
+            "settings" in keys
+            or "streamSettings" in keys
+        )
+    ):
         return True
 
     return False
@@ -1522,38 +1114,24 @@ def extract_json_configs(
 
     configs = []
 
-    if isinstance(
-        obj,
-        dict,
-    ):
+    if isinstance(obj, dict):
 
-        if looks_like_xray_config(
-            obj
-        ):
+        if looks_like_xray_config(obj):
 
-            configs.append(
-                obj
-            )
+            configs.append(obj)
 
         for value in obj.values():
 
             configs.extend(
-                extract_json_configs(
-                    value
-                )
+                extract_json_configs(value)
             )
 
-    elif isinstance(
-        obj,
-        list,
-    ):
+    elif isinstance(obj, list):
 
         for item in obj:
 
             configs.extend(
-                extract_json_configs(
-                    item
-                )
+                extract_json_configs(item)
             )
 
     return configs
@@ -1569,26 +1147,21 @@ def parse_json_configs(
         stripped.startswith("[")
         or stripped.startswith("{")
     ):
-
         return []
 
     try:
 
-        obj = json.loads(
-            stripped
-        )
+        obj = json.loads(stripped)
 
     except Exception:
 
         return []
 
-    return extract_json_configs(
-        obj
-    )
+    return extract_json_configs(obj)
 
 
 # ============================================================
-# JSON -> STRING EXTRACTION
+# JSON STRINGS
 # ============================================================
 
 def extract_strings_from_json(
@@ -1597,43 +1170,26 @@ def extract_strings_from_json(
 
     result = []
 
-    if isinstance(
-        value,
-        str,
-    ):
+    if isinstance(value, str):
 
-        result.append(
-            value
-        )
+        result.append(value)
 
-    elif isinstance(
-        value,
-        dict,
-    ):
+    elif isinstance(value, dict):
 
         for key, val in value.items():
 
-            result.append(
-                str(key)
-            )
+            result.append(str(key))
 
             result.extend(
-                extract_strings_from_json(
-                    val
-                )
+                extract_strings_from_json(val)
             )
 
-    elif isinstance(
-        value,
-        list,
-    ):
+    elif isinstance(value, list):
 
         for item in value:
 
             result.extend(
-                extract_strings_from_json(
-                    item
-                )
+                extract_strings_from_json(item)
             )
 
     return result
@@ -1650,7 +1206,6 @@ def decode_base64_variants(
     results = []
 
     if not value:
-
         return results
 
     compact = re.sub(
@@ -1694,7 +1249,6 @@ def decode_base64_variants(
             )
 
             if not raw:
-
                 continue
 
             decoded = raw.decode(
@@ -1703,18 +1257,13 @@ def decode_base64_variants(
             )
 
             if decoded.strip():
-
-                results.append(
-                    decoded
-                )
+                results.append(decoded)
 
         except Exception:
 
             pass
 
-    return unique_preserve_order(
-        results
-    )
+    return unique_preserve_order(results)
 
 
 def looks_like_base64(
@@ -1724,7 +1273,6 @@ def looks_like_base64(
     value = value.strip()
 
     if len(value) < 16:
-
         return False
 
     compact = re.sub(
@@ -1737,19 +1285,16 @@ def looks_like_base64(
         r"[A-Za-z0-9+/=_-]+",
         compact,
     ):
-
         return False
 
-    for decoded in (
-        decode_base64_variants(
-            compact
-        )
+    for decoded in decode_base64_variants(
+        compact
     ):
 
-        if extract_protocol_links(
-            decoded
+        if (
+            extract_protocol_links(decoded)
+            or parse_json_configs(decoded)
         ):
-
             return True
 
     return False
@@ -1764,12 +1309,9 @@ def extract_protocol_links(
 ):
 
     if not text:
-
         return []
 
-    text = html.unescape(
-        text
-    )
+    text = html.unescape(text)
 
     text = text.replace(
         "\\/",
@@ -1787,31 +1329,968 @@ def extract_protocol_links(
         rf"[^\s\"'<>]+"
     )
 
-    found = pattern.findall(
-        text
-    )
+    found = pattern.findall(text)
 
     result = []
 
     for item in found:
 
-        item = clean_config(
-            item
-        )
+        item = clean_config(item)
 
         item = item.rstrip(
             ".,;!?"
         )
 
         if item:
+            result.append(item)
 
-            result.append(
-                item
+    return unique_preserve_order(result)
+
+
+# ============================================================
+# JSON -> URI CONVERTERS
+# ============================================================
+
+def get_outbounds(
+    config,
+):
+    """
+    Return outbound objects from an Xray/V2Ray JSON config.
+    """
+
+    if not isinstance(config, dict):
+        return []
+
+    outbounds = config.get(
+        "outbounds"
+    )
+
+    if isinstance(outbounds, list):
+        return [
+            x for x in outbounds
+            if isinstance(x, dict)
+        ]
+
+    # Also support a direct outbound object.
+    if (
+        "protocol" in config
+        and "settings" in config
+    ):
+        return [config]
+
+    return []
+
+
+def get_primary_outbound(
+    config,
+):
+    """
+    Select a real proxy outbound.
+    Ignore common direct/block/DNS outbounds.
+    """
+
+    ignored = {
+        "freedom",
+        "blackhole",
+        "dns",
+        "loopback",
+    }
+
+    outbounds = get_outbounds(config)
+
+    for outbound in outbounds:
+
+        protocol = str(
+            outbound.get(
+                "protocol",
+                ""
+            )
+        ).lower()
+
+        if protocol not in ignored:
+            return outbound
+
+    return None
+
+
+def get_stream_settings(
+    outbound,
+):
+
+    settings = outbound.get(
+        "streamSettings",
+        {}
+    )
+
+    if not isinstance(settings, dict):
+        return {}
+
+    return settings
+
+
+def get_server_from_settings(
+    outbound,
+):
+
+    settings = outbound.get(
+        "settings",
+        {}
+    )
+
+    if not isinstance(settings, dict):
+        return None, None
+
+    vnext = settings.get(
+        "vnext"
+    )
+
+    if isinstance(vnext, list) and vnext:
+
+        first = vnext[0]
+
+        if isinstance(first, dict):
+
+            address = first.get(
+                "address"
             )
 
-    return unique_preserve_order(
+            port = first.get(
+                "port"
+            )
+
+            return address, port
+
+    servers = settings.get(
+        "servers"
+    )
+
+    if isinstance(servers, list) and servers:
+
+        first = servers[0]
+
+        if isinstance(first, dict):
+
+            address = first.get(
+                "address"
+            )
+
+            port = first.get(
+                "port"
+            )
+
+            return address, port
+
+    return None, None
+
+
+def json_vless_to_uri(
+    config,
+    outbound,
+):
+
+    settings = outbound.get(
+        "settings",
+        {}
+    )
+
+    if not isinstance(settings, dict):
+        return None
+
+    stream = get_stream_settings(
+        outbound
+    )
+
+    address, port = get_server_from_settings(
+        outbound
+    )
+
+    vnext = settings.get(
+        "vnext",
+        []
+    )
+
+    if (
+        isinstance(vnext, list)
+        and vnext
+        and isinstance(vnext[0], dict)
+    ):
+
+        user_list = vnext[0].get(
+            "users",
+            []
+        )
+
+        if not user_list:
+            return None
+
+        user = user_list[0]
+
+    else:
+
+        return None
+
+    uuid = user.get("id")
+
+    if not uuid or not address or not port:
+        return None
+
+    params = {}
+
+    encryption = user.get(
+        "encryption"
+    )
+
+    if encryption:
+        params["encryption"] = encryption
+
+    flow = user.get("flow")
+
+    if flow:
+        params["flow"] = flow
+
+    network = stream.get(
+        "network",
+        "tcp"
+    )
+
+    params["type"] = network
+
+    security = stream.get(
+        "security",
+        "none"
+    )
+
+    params["security"] = security
+
+    # --------------------------------------------------------
+    # TCP / HTTP
+    # --------------------------------------------------------
+
+    tcp_settings = stream.get(
+        "tcpSettings",
+        {}
+    )
+
+    if isinstance(tcp_settings, dict):
+
+        header = tcp_settings.get(
+            "header",
+            {}
+        )
+
+        if isinstance(header, dict):
+
+            header_type = header.get(
+                "type"
+            )
+
+            if header_type and header_type != "none":
+
+                params["headerType"] = (
+                    header_type
+                )
+
+                request = header.get(
+                    "request",
+                    {}
+                )
+
+                if isinstance(request, dict):
+
+                    headers = request.get(
+                        "headers",
+                        {}
+                    )
+
+                    if isinstance(
+                        headers,
+                        dict
+                    ):
+
+                        host = headers.get(
+                            "Host"
+                        )
+
+                        if isinstance(
+                            host,
+                            list
+                        ):
+                            host = (
+                                host[0]
+                                if host
+                                else None
+                            )
+
+                        if host:
+                            params["host"] = host
+
+    # --------------------------------------------------------
+    # WebSocket
+    # --------------------------------------------------------
+
+    ws = stream.get(
+        "wsSettings",
+        {}
+    )
+
+    if isinstance(ws, dict):
+
+        path = ws.get("path")
+
+        if path:
+            params["path"] = path
+
+        headers = ws.get(
+            "headers",
+            {}
+        )
+
+        if isinstance(headers, dict):
+
+            host = headers.get(
+                "Host"
+            )
+
+            if host:
+                params["host"] = host
+
+    # --------------------------------------------------------
+    # gRPC
+    # --------------------------------------------------------
+
+    grpc = stream.get(
+        "grpcSettings",
+        {}
+    )
+
+    if isinstance(grpc, dict):
+
+        service_name = grpc.get(
+            "serviceName"
+        )
+
+        if service_name:
+            params["serviceName"] = service_name
+
+        mode = grpc.get(
+            "multiMode"
+        )
+
+        if mode:
+            params["mode"] = "multi"
+
+    # --------------------------------------------------------
+    # HTTP/2
+    # --------------------------------------------------------
+
+    http = stream.get(
+        "httpSettings",
+        {}
+    )
+
+    if isinstance(http, dict):
+
+        path = http.get("path")
+
+        if path:
+            params["path"] = path
+
+        host = http.get("host")
+
+        if isinstance(host, list):
+            if host:
+                params["host"] = host[0]
+
+        elif host:
+            params["host"] = host
+
+    # --------------------------------------------------------
+    # TLS
+    # --------------------------------------------------------
+
+    tls = stream.get(
+        "tlsSettings",
+        {}
+    )
+
+    if isinstance(tls, dict):
+
+        sni = tls.get("serverName")
+
+        if sni:
+            params["sni"] = sni
+
+        fp = tls.get(
+            "fingerprint"
+        )
+
+        if fp:
+            params["fp"] = fp
+
+        alpn = tls.get("alpn")
+
+        if isinstance(alpn, list):
+            if alpn:
+                params["alpn"] = ",".join(
+                    str(x) for x in alpn
+                )
+
+        elif alpn:
+            params["alpn"] = str(alpn)
+
+    # --------------------------------------------------------
+    # Reality
+    # --------------------------------------------------------
+
+    reality = stream.get(
+        "realitySettings",
+        {}
+    )
+
+    if isinstance(reality, dict):
+
+        sni = reality.get(
+            "serverName"
+        )
+
+        if sni:
+            params["sni"] = sni
+
+        fp = reality.get(
+            "fingerprint"
+        )
+
+        if fp:
+            params["fp"] = fp
+
+        pbk = reality.get(
+            "publicKey"
+        )
+
+        if pbk:
+            params["pbk"] = pbk
+
+        sid = reality.get(
+            "shortId"
+        )
+
+        if sid:
+            params["sid"] = sid
+
+        spx = reality.get(
+            "spiderX"
+        )
+
+        if spx:
+            params["spx"] = spx
+
+    # --------------------------------------------------------
+    # Build URI
+    # --------------------------------------------------------
+
+    query = urlencode(
+        params,
+        doseq=False,
+        safe="/,",
+    )
+
+    name = (
+        first_value(
+            config,
+            "name",
+            "remarks",
+            "remark",
+            default="VLESS",
+        )
+    )
+
+    uri = (
+        "vless://"
+        f"{quote(str(uuid), safe='')}"
+        "@"
+        f"{address}:{port}"
+    )
+
+    if query:
+        uri += "?" + query
+
+    uri += "#" + quote(
+        str(name),
+        safe="",
+    )
+
+    return uri
+
+
+def json_vmess_to_uri(
+    config,
+    outbound,
+):
+
+    settings = outbound.get(
+        "settings",
+        {}
+    )
+
+    if not isinstance(settings, dict):
+        return None
+
+    vnext = settings.get(
+        "vnext",
+        []
+    )
+
+    if (
+        not isinstance(vnext, list)
+        or not vnext
+        or not isinstance(vnext[0], dict)
+    ):
+        return None
+
+    server = vnext[0]
+
+    address = server.get(
+        "address"
+    )
+
+    port = server.get(
+        "port"
+    )
+
+    users = server.get(
+        "users",
+        []
+    )
+
+    if (
+        not address
+        or not port
+        or not users
+    ):
+        return None
+
+    user = users[0]
+
+    uuid = user.get("id")
+
+    if not uuid:
+        return None
+
+    stream = get_stream_settings(
+        outbound
+    )
+
+    network = stream.get(
+        "network",
+        "tcp"
+    )
+
+    tls = stream.get(
+        "security",
+        ""
+    )
+
+    tls_settings = stream.get(
+        "tlsSettings",
+        {}
+    )
+
+    ws = stream.get(
+        "wsSettings",
+        {}
+    )
+
+    host = ""
+    path = ""
+
+    if isinstance(
+        ws,
+        dict
+    ):
+
+        path = ws.get(
+            "path",
+            ""
+        )
+
+        headers = ws.get(
+            "headers",
+            {}
+        )
+
+        if isinstance(
+            headers,
+            dict
+        ):
+            host = headers.get(
+                "Host",
+                ""
+            )
+
+    vmess_obj = {
+        "v": "2",
+        "ps": first_value(
+            config,
+            "name",
+            "remarks",
+            "remark",
+            default="VMess",
+        ),
+        "add": address,
+        "port": str(port),
+        "id": uuid,
+        "aid": str(
+            user.get(
+                "alterId",
+                0
+            )
+        ),
+        "scy": user.get(
+            "security",
+            "auto",
+        ),
+        "net": network,
+        "type": "none",
+        "host": host,
+        "path": path,
+        "tls": tls,
+    }
+
+    if isinstance(
+        tls_settings,
+        dict
+    ):
+
+        sni = tls_settings.get(
+            "serverName"
+        )
+
+        if sni:
+            vmess_obj["sni"] = sni
+
+    raw = json.dumps(
+        vmess_obj,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+
+    encoded = base64.b64encode(
+        raw
+    ).decode()
+
+    return (
+        "vmess://"
+        + encoded
+    )
+
+
+def json_trojan_to_uri(
+    config,
+    outbound,
+):
+
+    settings = outbound.get(
+        "settings",
+        {}
+    )
+
+    if not isinstance(settings, dict):
+        return None
+
+    servers = settings.get(
+        "servers",
+        []
+    )
+
+    if (
+        not isinstance(servers, list)
+        or not servers
+        or not isinstance(servers[0], dict)
+    ):
+        return None
+
+    server = servers[0]
+
+    address = server.get(
+        "address"
+    )
+
+    port = server.get(
+        "port"
+    )
+
+    password = server.get(
+        "password"
+    )
+
+    if (
+        not address
+        or not port
+        or not password
+    ):
+        return None
+
+    stream = get_stream_settings(
+        outbound
+    )
+
+    params = {}
+
+    network = stream.get(
+        "network"
+    )
+
+    if network:
+        params["type"] = network
+
+    security = stream.get(
+        "security"
+    )
+
+    if security:
+        params["security"] = security
+
+    tls = stream.get(
+        "tlsSettings",
+        {}
+    )
+
+    if isinstance(tls, dict):
+
+        sni = tls.get(
+            "serverName"
+        )
+
+        if sni:
+            params["sni"] = sni
+
+        fp = tls.get(
+            "fingerprint"
+        )
+
+        if fp:
+            params["fp"] = fp
+
+    name = first_value(
+        config,
+        "name",
+        "remarks",
+        "remark",
+        default="Trojan",
+    )
+
+    query = urlencode(
+        params,
+        safe="/,",
+    )
+
+    uri = (
+        "trojan://"
+        f"{quote(str(password), safe='')}"
+        "@"
+        f"{address}:{port}"
+    )
+
+    if query:
+        uri += "?" + query
+
+    uri += "#" + quote(
+        str(name),
+        safe="",
+    )
+
+    return uri
+
+
+def json_ss_to_uri(
+    config,
+    outbound,
+):
+
+    settings = outbound.get(
+        "settings",
+        {}
+    )
+
+    if not isinstance(settings, dict):
+        return None
+
+    servers = settings.get(
+        "servers",
+        []
+    )
+
+    if (
+        not isinstance(servers, list)
+        or not servers
+        or not isinstance(servers[0], dict)
+    ):
+        return None
+
+    server = servers[0]
+
+    address = server.get(
+        "address"
+    )
+
+    port = server.get(
+        "port"
+    )
+
+    password = server.get(
+        "password"
+    )
+
+    method = server.get(
+        "method"
+    )
+
+    if not all(
+        [
+            address,
+            port,
+            password,
+            method,
+        ]
+    ):
+        return None
+
+    userinfo = (
+        f"{method}:{password}"
+    )
+
+    encoded = base64.urlsafe_b64encode(
+        userinfo.encode()
+    ).decode().rstrip("=")
+
+    name = first_value(
+        config,
+        "name",
+        "remarks",
+        "remark",
+        default="SS",
+    )
+
+    return (
+        "ss://"
+        f"{encoded}"
+        f"@{address}:{port}"
+        "#"
+        f"{quote(str(name), safe='')}"
+    )
+
+
+def json_config_to_uri(
+    config,
+):
+    """
+    Convert one Xray/V2Ray JSON config
+    into a clean URI.
+
+    Returns None if protocol is unsupported.
+    """
+
+    outbound = get_primary_outbound(
+        config
+    )
+
+    if outbound is None:
+        return None
+
+    protocol = str(
+        outbound.get(
+            "protocol",
+            ""
+        )
+    ).lower()
+
+    try:
+
+        if protocol == "vless":
+
+            return json_vless_to_uri(
+                config,
+                outbound,
+            )
+
+        if protocol == "vmess":
+
+            return json_vmess_to_uri(
+                config,
+                outbound,
+            )
+
+        if protocol == "trojan":
+
+            return json_trojan_to_uri(
+                config,
+                outbound,
+            )
+
+        if protocol in (
+            "shadowsocks",
+            "ss",
+        ):
+
+            return json_ss_to_uri(
+                config,
+                outbound,
+            )
+
+    except Exception as exc:
+
+        print(
+            "[CONVERTER] ERROR "
+            f"{protocol}: {exc}"
+        )
+
+    return None
+
+
+def convert_json_configs_to_uris(
+    configs,
+):
+
+    result = []
+
+    converted = 0
+    failed = 0
+
+    for config in configs:
+
+        uri = json_config_to_uri(
+            config
+        )
+
+        if uri:
+
+            result.append(uri)
+            converted += 1
+
+        else:
+
+            failed += 1
+
+    result = unique_preserve_order(
         result
     )
+
+    print(
+        f"[CONVERTER] JSON configs: "
+        f"{len(configs)}"
+    )
+
+    print(
+        f"[CONVERTER] Converted to URI: "
+        f"{converted}"
+    )
+
+    print(
+        f"[CONVERTER] Unsupported/failed: "
+        f"{failed}"
+    )
+
+    return result
 
 
 # ============================================================
@@ -1830,9 +2309,7 @@ def parse_content(
     # --------------------------------------------------------
 
     uri_configs.extend(
-        extract_protocol_links(
-            text
-        )
+        extract_protocol_links(text)
     )
 
     # --------------------------------------------------------
@@ -1840,9 +2317,7 @@ def parse_content(
     # --------------------------------------------------------
 
     json_configs.extend(
-        parse_json_configs(
-            text
-        )
+        parse_json_configs(text)
     )
 
     # --------------------------------------------------------
@@ -1858,58 +2333,38 @@ def parse_content(
 
         try:
 
-            obj = json.loads(
-                stripped
-            )
+            obj = json.loads(stripped)
 
             for value in (
-                extract_strings_from_json(
-                    obj
-                )
+                extract_strings_from_json(obj)
             ):
 
                 uri_configs.extend(
-                    extract_protocol_links(
-                        value
-                    )
+                    extract_protocol_links(value)
                 )
 
         except Exception:
-
             pass
 
     # --------------------------------------------------------
     # 4. Base64
     # --------------------------------------------------------
 
-    if looks_like_base64(
-        text
-    ):
+    if looks_like_base64(text):
 
         for decoded in (
-            decode_base64_variants(
-                text
-            )
+            decode_base64_variants(text)
         ):
 
-            sub_uri, sub_json = (
-                parse_content(
-                    decoded
-                )
+            sub_uri, sub_json = parse_content(
+                decoded
             )
 
-            uri_configs.extend(
-                sub_uri
-            )
-
-            json_configs.extend(
-                sub_json
-            )
+            uri_configs.extend(sub_uri)
+            json_configs.extend(sub_json)
 
     return (
-        unique_preserve_order(
-            uri_configs
-        ),
+        unique_preserve_order(uri_configs),
         json_configs,
     )
 
@@ -1952,10 +2407,7 @@ def download_source(
 
         if not response.ok:
 
-            print(
-                "[SOURCE] skipped"
-            )
-
+            print("[SOURCE] skipped")
             return None
 
         chunks = []
@@ -1966,31 +2418,18 @@ def download_source(
         ):
 
             if not chunk:
-
                 continue
 
-            total += len(
-                chunk
-            )
+            total += len(chunk)
 
-            if (
-                total
-                > MAX_SOURCE_SIZE
-            ):
+            if total > MAX_SOURCE_SIZE:
 
-                print(
-                    "[SOURCE] too large"
-                )
-
+                print("[SOURCE] too large")
                 return None
 
-            chunks.append(
-                chunk
-            )
+            chunks.append(chunk)
 
-        raw = b"".join(
-            chunks
-        )
+        raw = b"".join(chunks)
 
         text = raw.decode(
             "utf-8-sig",
@@ -2008,8 +2447,7 @@ def download_source(
 
         print(
             f"[SOURCE] ERROR "
-            f"{type(exc).__name__}: "
-            f"{exc}"
+            f"{type(exc).__name__}: {exc}"
         )
 
         return None
@@ -2025,23 +2463,12 @@ def debug_preview(
 
     preview = (
         text[:DEBUG_PREVIEW]
-        .replace(
-            "\r",
-            "\\r",
-        )
-        .replace(
-            "\n",
-            "\\n",
-        )
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
     )
 
-    print(
-        "[DEBUG] Response preview:"
-    )
-
-    print(
-        preview
-    )
+    print("[DEBUG] Response preview:")
+    print(preview)
 
 
 # ============================================================
@@ -2055,10 +2482,8 @@ def parse_source(
     uri_configs = []
     json_configs = []
 
-    candidates = (
-        extract_wrapped_urls(
-            original_url
-        )
+    candidates = extract_wrapped_urls(
+        original_url
     )
 
     print(
@@ -2073,13 +2498,10 @@ def parse_source(
         )
 
         if not text:
-
             continue
 
-        uris, jsons = (
-            parse_content(
-                text
-            )
+        uris, jsons = parse_content(
+            text
         )
 
         if uris:
@@ -2089,9 +2511,7 @@ def parse_source(
                 f"{len(uris)}"
             )
 
-            uri_configs.extend(
-                uris
-            )
+            uri_configs.extend(uris)
 
         if jsons:
 
@@ -2100,9 +2520,7 @@ def parse_source(
                 f"{len(jsons)}"
             )
 
-            json_configs.extend(
-                jsons
-            )
+            json_configs.extend(jsons)
 
         if not uris and not jsons:
 
@@ -2111,14 +2529,10 @@ def parse_source(
                 "No recognized config format"
             )
 
-            debug_preview(
-                text
-            )
+            debug_preview(text)
 
     return (
-        unique_preserve_order(
-            uri_configs
-        ),
+        unique_preserve_order(uri_configs),
         json_configs,
     )
 
@@ -2204,7 +2618,7 @@ def main():
         "Telegram latest post -> "
         "Happ crypt5 -> "
         "subscription -> "
-        "V2Ray/Xray -> Gist"
+        "JSON -> URI -> Gist"
     )
 
     print("=" * 70)
@@ -2225,30 +2639,22 @@ def main():
     # Telegram
     # --------------------------------------------------------
 
-    channel_html = (
-        get_channel_page()
+    channel_html = get_channel_page()
+
+    post_url = get_last_post_url(
+        channel_html
     )
 
-    post_url = (
-        get_last_post_url(
-            channel_html
-        )
-    )
-
-    post_html = (
-        fetch_post(
-            post_url
-        )
+    post_html = fetch_post(
+        post_url
     )
 
     # --------------------------------------------------------
     # NORMAL HTTPS SOURCES
     # --------------------------------------------------------
 
-    source_urls = (
-        extract_post_urls(
-            post_html
-        )
+    source_urls = extract_post_urls(
+        post_html
     )
 
     print()
@@ -2271,30 +2677,20 @@ def main():
     # HAPP ENCRYPTED SOURCES
     # --------------------------------------------------------
 
-    happ_source_urls = (
-        process_happ_links(
-            post_html
-        )
+    happ_source_urls = process_happ_links(
+        post_html
     )
-
-    # --------------------------------------------------------
-    # MERGE SOURCES
-    # --------------------------------------------------------
 
     source_urls.extend(
         happ_source_urls
     )
 
-    source_urls = (
-        unique_preserve_order(
-            source_urls
-        )
+    source_urls = unique_preserve_order(
+        source_urls
     )
 
     print()
-    print(
-        "=" * 70
-    )
+    print("=" * 70)
 
     print(
         f"[TELEGRAM] Total external "
@@ -2310,9 +2706,7 @@ def main():
             f"  {index}. {url}"
         )
 
-    print(
-        "=" * 70
-    )
+    print("=" * 70)
 
     if not source_urls:
 
@@ -2334,40 +2728,41 @@ def main():
     ):
 
         print()
-        print(
-            "=" * 70
-        )
+        print("=" * 70)
 
         print(
             f"[{index}/{len(source_urls)}] "
             f"Processing source"
         )
 
-        print(
+        print(source_url)
+
+        uris, jsons = parse_source(
             source_url
         )
 
-        uris, jsons = (
-            parse_source(
-                source_url
-            )
-        )
+        all_uri_configs.extend(uris)
+        all_json_configs.extend(jsons)
 
-        all_uri_configs.extend(
-            uris
-        )
-
-        all_json_configs.extend(
-            jsons
-        )
-
-        time.sleep(
-            0.5
-        )
+        time.sleep(0.5)
 
     # --------------------------------------------------------
-    # DEDUPLICATE URI CONFIGS
+    # JSON -> URI
     # --------------------------------------------------------
+
+    converted_json_uris = (
+        convert_json_configs_to_uris(
+            all_json_configs
+        )
+    )
+
+    # --------------------------------------------------------
+    # MERGE ALL URI CONFIGS
+    # --------------------------------------------------------
+
+    all_uri_configs.extend(
+        converted_json_uris
+    )
 
     all_uri_configs = (
         unique_preserve_order(
@@ -2378,109 +2773,63 @@ def main():
     )
 
     # --------------------------------------------------------
-    # DEDUPLICATE JSON CONFIGS
-    # --------------------------------------------------------
-
-    unique_json = []
-    seen_json = set()
-
-    for config in all_json_configs:
-
-        try:
-
-            normalized = json.dumps(
-                config,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(
-                    ",",
-                    ":",
-                ),
-            )
-
-            if normalized in seen_json:
-
-                continue
-
-            seen_json.add(
-                normalized
-            )
-
-            unique_json.append(
-                config
-            )
-
-        except Exception:
-
-            continue
-
-    # --------------------------------------------------------
     # STATISTICS
     # --------------------------------------------------------
 
     print()
+    print("=" * 70)
+
     print(
-        "=" * 70
+        f"[RESULT] Direct URI configs: "
+        f"{len(all_uri_configs) - len(converted_json_uris)}"
     )
 
     print(
-        f"[RESULT] URI configs: "
+        f"[RESULT] JSON configs converted: "
+        f"{len(converted_json_uris)}"
+    )
+
+    print(
+        f"[RESULT] TOTAL URI configs: "
         f"{len(all_uri_configs)}"
     )
 
-    print(
-        f"[RESULT] JSON configs: "
-        f"{len(unique_json)}"
-    )
-
-    print(
-        "=" * 70
-    )
+    print("=" * 70)
 
     # --------------------------------------------------------
     # DO NOT OVERWRITE WITH EMPTY RESULT
     # --------------------------------------------------------
 
-    if (
-        not all_uri_configs
-        and not unique_json
-    ):
+    if not all_uri_configs:
 
         raise RuntimeError(
-            "No supported configs found. "
+            "No supported URI configs found. "
             "Gist was NOT modified."
         )
 
     # --------------------------------------------------------
     # OUTPUT
+    #
+    # IMPORTANT:
+    #
+    # Gist now receives ONLY clean URI links.
+    # NO JSON is written to Gist.
     # --------------------------------------------------------
 
-    if unique_json:
+    output = (
+        "\n".join(all_uri_configs)
+        + "\n"
+    )
 
-        output = json.dumps(
-            unique_json,
-            ensure_ascii=False,
-            indent=2,
-        ) + "\n"
+    print(
+        "[RESULT] Output format: "
+        "plain URI subscription"
+    )
 
-        print(
-            "[RESULT] Output format: "
-            "Xray/V2Ray JSON"
-        )
-
-    else:
-
-        output = (
-            "\n".join(
-                all_uri_configs
-            )
-            + "\n"
-        )
-
-        print(
-            "[RESULT] Output format: "
-            "URI subscription"
-        )
+    print(
+        f"[RESULT] Output size: "
+        f"{len(output.encode('utf-8'))} bytes"
+    )
 
     # --------------------------------------------------------
     # GIST UPDATE
@@ -2496,17 +2845,10 @@ def main():
     # --------------------------------------------------------
 
     print()
-    print(
-        "=" * 70
-    )
+    print("=" * 70)
 
     print(
         "[DONE] Successfully completed"
-    )
-
-    print(
-        f"[DONE] JSON configs: "
-        f"{len(unique_json)}"
     )
 
     print(
@@ -2515,8 +2857,11 @@ def main():
     )
 
     print(
-        "=" * 70
+        f"[DONE] JSON configs converted: "
+        f"{len(converted_json_uris)}"
     )
+
+    print("=" * 70)
 
 
 # ============================================================
