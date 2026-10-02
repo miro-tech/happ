@@ -16,14 +16,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ============================================================
+      # Checkout repository
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ============================================================
+      # Python
+      # ============================================================
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # ============================================================
+      # Dependencies
+      # ============================================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -59,6 +68,8 @@ jobs:
           echo "[GIST] Downloading happ.json..."
 
           curl -fsSL \
+            --connect-timeout 20 \
+            --max-time 30 \
             -H "Authorization: token ${GIST_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/gists/${GIST_ID}" \
@@ -108,34 +119,65 @@ jobs:
         run: |
           set -e
 
+          export GIT_TERMINAL_PROMPT=0
+          export GIT_HTTP_LOW_SPEED_LIMIT=1
+          export GIT_HTTP_LOW_SPEED_TIME=20
+
           echo "[GITVERSE] Cloning repository..."
 
-          git clone \
-            https://${GV_USER}:${GV_TOKEN}@gitverse.ru/mirgittech/happ.git \
+          timeout 20s git clone \
+            --depth 1 \
+            --branch master \
+            "https://${GV_USER}:${GV_TOKEN}@gitverse.ru/mirgittech/happ.git" \
             gitverse
 
+          echo "[GITVERSE] Clone completed."
+
+          # ----------------------------------------------------------
+          # Copy Base64 file
+          # ----------------------------------------------------------
           echo "[GITVERSE] Copying Base64 data..."
 
           cp happ_base64.txt gitverse/happ.json
 
           cd gitverse
 
-          git checkout master
-
+          # ----------------------------------------------------------
+          # Git identity
+          # ----------------------------------------------------------
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
+          # ----------------------------------------------------------
+          # Stage changes
+          # ----------------------------------------------------------
           git add happ.json
 
-          git commit \
-            -m "Update happ.json $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || {
-              echo "[GITVERSE] No changes."
-              exit 0
-            }
+          # ----------------------------------------------------------
+          # Check whether file changed
+          # ----------------------------------------------------------
+          if git diff --cached --quiet; then
+            echo "[GITVERSE] No changes."
+            exit 0
+          fi
 
+          # ----------------------------------------------------------
+          # Commit
+          # ----------------------------------------------------------
+          echo "[GITVERSE] Creating commit..."
+
+          git commit \
+            -m "Update happ.json $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          echo "[GITVERSE] Commit completed."
+
+          # ----------------------------------------------------------
+          # Push
+          # ----------------------------------------------------------
           echo "[GITVERSE] Pushing to master..."
 
-          git push origin master
+          timeout 20s git push origin master
 
+          echo "[GITVERSE] Push completed."
           echo "[GITVERSE] Done."
           echo "[GITVERSE] File: https://gitverse.ru/mirgittech/happ/content/master/happ.json"
