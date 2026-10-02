@@ -47,29 +47,38 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
 
           TELEGRAM_CHANNEL: happvpn
-          GIST_FILENAME: happ.json
 
-          REQUEST_TIMEOUT: "30"
+          # Теперь Gist содержит обычный список URI
+          GIST_FILENAME: happ.txt
+
+          REQUEST_TIMEOUT: "60"
           MAX_SOURCE_SIZE: "10485760"
 
         run: |
+          set -e
+
+          echo "[PARSER] Starting parser..."
+
           python parser.py
 
+          echo "[PARSER] Parser completed."
+
       # ============================================================
-      # Download JSON from Gist
+      # Download clean URI list from Gist
       # ============================================================
-      - name: Download JSON from Gist
+      - name: Download URI list from Gist
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
+
         run: |
           set -e
 
-          echo "[GIST] Downloading happ.json..."
+          echo "[GIST] Downloading happ.txt..."
 
           curl -fsSL \
-            --connect-timeout 20 \
-            --max-time 30 \
+            --connect-timeout 30 \
+            --max-time 120 \
             -H "Authorization: token ${GIST_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/gists/${GIST_ID}" \
@@ -79,53 +88,98 @@ jobs:
           import json
           from pathlib import Path
 
-          data = json.loads(Path("gist.json").read_text())
+          data = json.loads(Path("gist.json").read_text(encoding="utf-8"))
 
-          filename = "happ.json"
+          filename = "happ.txt"
 
           if filename not in data["files"]:
               raise SystemExit(f"[ERROR] {filename} not found in Gist")
 
           content = data["files"][filename]["content"]
 
+          if not content.strip():
+              raise SystemExit("[ERROR] Gist file is empty")
+
           Path(filename).write_text(content, encoding="utf-8")
 
           print(f"[GIST] Saved {filename}")
-          print(f"[GIST] Size: {len(content.encode('utf-8'))} bytes")
+          print(
+              f"[GIST] Size: "
+              f"{len(content.encode('utf-8'))} bytes"
+          )
+
+          lines = [
+              x.strip()
+              for x in content.splitlines()
+              if x.strip()
+          ]
+
+          print(f"[GIST] URI lines: {len(lines)}")
+
+          # Проверяем, что это действительно список URI,
+          # а не JSON.
+          bad = []
+
+          protocols = (
+              "vless://",
+              "vmess://",
+              "trojan://",
+              "ss://",
+              "ssconf://",
+              "hysteria://",
+              "hysteria2://",
+              "hy2://",
+              "tuic://",
+              "wireguard://",
+          )
+
+          for line in lines:
+              if not line.startswith(protocols):
+                  bad.append(line[:100])
+
+          if bad:
+              print("[WARNING] Some lines are not recognized URI:")
+              for item in bad[:10]:
+                  print(f"  {item}")
+
+          print("[GIST] Validation completed.")
           PY
 
       # ============================================================
-      # Encode JSON to Base64
+      # Encode clean URI list to Base64
       # ============================================================
-      - name: Encode JSON to Base64
+      - name: Encode URI list to Base64
         run: |
           set -e
 
-          echo "[BASE64] Encoding happ.json..."
+          echo "[BASE64] Encoding happ.txt..."
 
-          base64 -w 0 happ.json > happ_base64.txt
+          base64 -w 0 happ.txt > happ_base64.txt
 
           echo "[BASE64] Done."
-          echo "[BASE64] Original size: $(wc -c < happ.json) bytes"
+          echo "[BASE64] Original size: $(wc -c < happ.txt) bytes"
           echo "[BASE64] Base64 size:   $(wc -c < happ_base64.txt) bytes"
 
       # ============================================================
-      # Push to GitVerse
+      # Push Base64 subscription to GitVerse
       # ============================================================
       - name: Push to GitVerse
         env:
           GV_USER: ${{ secrets.GV_USER }}
           GV_TOKEN: ${{ secrets.GV_TOKEN }}
+
         run: |
           set -e
 
           export GIT_TERMINAL_PROMPT=0
+
+          # Git transport timeout
           export GIT_HTTP_LOW_SPEED_LIMIT=1
-          export GIT_HTTP_LOW_SPEED_TIME=20
+          export GIT_HTTP_LOW_SPEED_TIME=120
 
           echo "[GITVERSE] Cloning repository..."
 
-          timeout 20s git clone \
+          timeout 120s git clone \
             --depth 1 \
             --branch master \
             "https://${GV_USER}:${GV_TOKEN}@gitverse.ru/mirgittech/happ.git" \
@@ -136,7 +190,7 @@ jobs:
           # ----------------------------------------------------------
           # Copy Base64 data
           # ----------------------------------------------------------
-          echo "[GITVERSE] Copying Base64 data..."
+          echo "[GITVERSE] Copying Base64 subscription..."
 
           cp happ_base64.txt gitverse/happ.txt
 
@@ -176,8 +230,10 @@ jobs:
           # ----------------------------------------------------------
           echo "[GITVERSE] Pushing to master..."
 
-          timeout 20s git push origin master
+          timeout 120s git push origin master
 
           echo "[GITVERSE] Push completed."
           echo "[GITVERSE] Done."
-          echo "[GITVERSE] File: https://gitverse.ru/mirgittech/happ/content/master/happ.txt"
+
+          echo "[GITVERSE] File:"
+          echo "https://gitverse.ru/mirgittech/happ/content/master/happ.txt"
