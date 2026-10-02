@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Every 6 hours.
     # GitHub cron uses UTC.
     - cron: "0 1,6,10,12,16,19,23 * * *"
 
@@ -35,18 +34,68 @@ jobs:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
 
-          # Telegram public channel.
-          # The parser automatically finds the newest post.
           TELEGRAM_CHANNEL: happvpn
-
-          # File inside the Gist.
           GIST_FILENAME: happ.json
 
-          # HTTP timeout.
           REQUEST_TIMEOUT: "30"
-
-          # Maximum size of one subscription.
           MAX_SOURCE_SIZE: "10485760"
 
         run: |
           python parser.py
+
+      # ============================================================
+      # Encode happ.json to Base64
+      # ============================================================
+      - name: Encode JSON to Base64
+        run: |
+          set -e
+
+          echo "[BASE64] Encoding happ.json..."
+
+          base64 -w 0 happ.json > happ_base64.json
+
+          echo "[BASE64] Done."
+          echo "[BASE64] Original size: $(wc -c < happ.json) bytes"
+          echo "[BASE64] Base64 size:   $(wc -c < happ_base64.json) bytes"
+
+      # ============================================================
+      # Push to GitVerse
+      # ============================================================
+      - name: Push to GitVerse
+        env:
+          GV_USER: ${{ secrets.GV_USER }}
+          GV_TOKEN: ${{ secrets.GV_TOKEN }}
+        run: |
+          set -e
+
+          echo "[GITVERSE] Cloning repository..."
+
+          git clone \
+            https://${GV_USER}:${GV_TOKEN}@gitverse.ru/mirgittech/happ.git \
+            gitverse
+
+          echo "[GITVERSE] Copying Base64 data..."
+
+          cp happ_base64.json gitverse/happ.json
+
+          cd gitverse
+
+          git checkout master
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          git add happ.json
+
+          git commit \
+            -m "Update happ.json $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || {
+              echo "[GITVERSE] No changes."
+              exit 0
+            }
+
+          echo "[GITVERSE] Pushing to master..."
+
+          git push origin master
+
+          echo "[GITVERSE] Done."
+          echo "[GITVERSE] File: https://gitverse.ru/mirgittech/happ/content/master/happ.json"
