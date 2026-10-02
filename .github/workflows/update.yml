@@ -43,8 +43,45 @@ jobs:
         run: |
           python parser.py
 
+            # ============================================================
+      # Download JSON from Gist and encode to Base64
       # ============================================================
-      # Encode happ.json to Base64
+      - name: Download JSON from Gist
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+        run: |
+          set -e
+
+          echo "[GIST] Downloading happ.json..."
+
+          curl -fsSL \
+            -H "Authorization: token ${GIST_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/gists/${GIST_ID}" \
+            -o gist.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("gist.json").read_text())
+
+          filename = "happ.json"
+
+          if filename not in data["files"]:
+              raise SystemExit(f"[ERROR] {filename} not found in Gist")
+
+          content = data["files"][filename]["content"]
+
+          Path(filename).write_text(content, encoding="utf-8")
+
+          print(f"[GIST] Saved {filename}")
+          print(f"[GIST] Size: {len(content.encode('utf-8'))} bytes")
+          PY
+
+      # ============================================================
+      # Encode JSON to Base64
       # ============================================================
       - name: Encode JSON to Base64
         run: |
@@ -52,11 +89,11 @@ jobs:
 
           echo "[BASE64] Encoding happ.json..."
 
-          base64 -w 0 happ.json > happ_base64.json
+          base64 -w 0 happ.json > happ_base64.txt
 
           echo "[BASE64] Done."
           echo "[BASE64] Original size: $(wc -c < happ.json) bytes"
-          echo "[BASE64] Base64 size:   $(wc -c < happ_base64.json) bytes"
+          echo "[BASE64] Base64 size:   $(wc -c < happ_base64.txt) bytes"
 
       # ============================================================
       # Push to GitVerse
@@ -76,7 +113,7 @@ jobs:
 
           echo "[GITVERSE] Copying Base64 data..."
 
-          cp happ_base64.json gitverse/happ.json
+          cp happ_base64.txt gitverse/happ.json
 
           cd gitverse
 
